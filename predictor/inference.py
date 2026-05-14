@@ -32,16 +32,16 @@ def run_inference(session: Session, market: Market, model_loader) -> Prediction 
     result = build_feature_vector(rows, minutes_to_close=minutes_to_close, ts=ts)
     feature_snapshot_id = rows[0].id  # most recent row id
 
-    model = model_loader.get_model(market.market_id)
+    # Look up model by SERIES ticker so the same model is reused across all
+    # contracts of a series (e.g. KXBTC15M), not per individual contract.
+    model = model_loader.get_model(market.ticker)
+    series_version = model_loader._version_cache.get(market.ticker, "unknown")
+
     if model is None:
         pred = Prediction(
-            market_id=market.market_id,
-            ts=ts,
-            direction="UP",
-            confidence=0.5,
-            low_confidence=True,
-            model_version="none",
-            feature_snapshot_id=feature_snapshot_id,
+            market_id=market.market_id, ts=ts,
+            direction="UP", confidence=0.5, low_confidence=True,
+            model_version="none", feature_snapshot_id=feature_snapshot_id,
             settled_at=market.close_time,
         )
         session.add(pred)
@@ -51,13 +51,9 @@ def run_inference(session: Session, market: Market, model_loader) -> Prediction 
     if result is None:
         logger.info("Insufficient rows for %s — low_confidence", market.market_id)
         pred = Prediction(
-            market_id=market.market_id,
-            ts=ts,
-            direction="UP",
-            confidence=0.5,
-            low_confidence=True,
-            model_version=model_loader._version_cache.get(market.market_id, "unknown"),
-            feature_snapshot_id=feature_snapshot_id,
+            market_id=market.market_id, ts=ts,
+            direction="UP", confidence=0.5, low_confidence=True,
+            model_version=series_version, feature_snapshot_id=feature_snapshot_id,
             settled_at=market.close_time,
         )
         session.add(pred)
@@ -65,19 +61,15 @@ def run_inference(session: Session, market: Market, model_loader) -> Prediction 
         return pred
 
     vec, _ = result
-    proba = model.predict_proba(vec.reshape(1, -1))[0]  # [p_down, p_up]
+    proba = model.predict_proba(vec.reshape(1, -1))[0]
     p_up = float(proba[1])
     direction = "UP" if p_up >= 0.5 else "DOWN"
     confidence = p_up if direction == "UP" else 1 - p_up
 
     pred = Prediction(
-        market_id=market.market_id,
-        ts=ts,
-        direction=direction,
-        confidence=confidence,
-        low_confidence=False,
-        model_version=model_loader._version_cache.get(market.market_id, "unknown"),
-        feature_snapshot_id=feature_snapshot_id,
+        market_id=market.market_id, ts=ts,
+        direction=direction, confidence=confidence, low_confidence=False,
+        model_version=series_version, feature_snapshot_id=feature_snapshot_id,
         settled_at=market.close_time,
     )
     session.add(pred)

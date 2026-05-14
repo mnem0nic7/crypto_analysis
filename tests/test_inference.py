@@ -68,3 +68,22 @@ def test_run_inference_writes_prediction_with_model(db_session):
     assert float(pred.confidence) == pytest.approx(0.7, abs=0.01)
     assert pred.low_confidence is False
     assert pred.market_id == "KXBTCUSD-WM"
+
+
+def test_run_inference_looks_up_model_by_series_ticker(db_session):
+    """get_model must be called with market.ticker, not market.market_id."""
+    market = _make_market(db_session, "KXBTC15M-STCK")
+    market.ticker = "KXBTC15M"  # series ticker differs from market_id
+    db_session.flush()
+    _make_raw_rows(db_session, "KXBTC15M-STCK")
+
+    mock_model = MagicMock()
+    mock_model.predict_proba.return_value = np.array([[0.4, 0.6]])
+    mock_loader = MagicMock()
+    mock_loader.get_model.return_value = mock_model
+    mock_loader._version_cache = {"KXBTC15M": "v1"}
+
+    run_inference(db_session, market, mock_loader)
+
+    # get_model must be called with the SERIES ticker, not the contract market_id
+    mock_loader.get_model.assert_called_with("KXBTC15M")
