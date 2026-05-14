@@ -36,6 +36,7 @@ def backfill_outcomes(session: Session) -> int:
                 pred.market_id, pred.ts,
             )
             continue
+        # Flat price (==) treated as DOWN (0); rare in practice and consistent with binary label convention
         pred.actual_outcome = 1 if price_at_settle > price_at_pred else 0
         updated += 1
     session.flush()
@@ -59,4 +60,4 @@ def _price_at(session: Session, market_id: str, ts: datetime, direction: str) ->
             .order_by(RawFeature.ts.asc())
             .first()
         )
-    return float(row.price_close) if row and row.price_close else None
+    return float(row.price_close) if row is not None and row.price_close is not None else None
