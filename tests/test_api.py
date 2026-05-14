@@ -96,6 +96,7 @@ def test_stats_summary_no_data(db_session):
     assert body["total_settled"] == 0
     assert body["overall_accuracy"] == 0.0
     assert body["high_conf_accuracy"] == 0.0
+    assert body["high_conf_count"] == 0
     assert body["markets"] == []
 
 
@@ -129,6 +130,7 @@ def test_stats_summary_aggregates_correctly(db_session):
     assert abs(body["overall_accuracy"] - 2/3) < 0.01
     # high_conf_accuracy: all 3 have conf >= 0.65, 2 correct
     assert abs(body["high_conf_accuracy"] - 2/3) < 0.01
+    assert body["high_conf_count"] == 3
     assert len(body["markets"]) == 1
     assert body["markets"][0]["ticker"] == "BTC"
 

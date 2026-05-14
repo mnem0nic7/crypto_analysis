@@ -36,6 +36,7 @@ export interface StatsSummary {
   total_settled: number
   overall_accuracy: number
   high_conf_accuracy: number
+  high_conf_count: number
   markets: MarketSummary[]
 }
 

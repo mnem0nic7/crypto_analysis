@@ -161,6 +161,7 @@ def create_app(session_factory_fn: Callable = None) -> FastAPI:
                 "total_settled": 0,
                 "overall_accuracy": 0.0,
                 "high_conf_accuracy": 0.0,
+                "high_conf_count": 0,
                 "markets": [],
             }
 
@@ -205,6 +206,7 @@ def create_app(session_factory_fn: Callable = None) -> FastAPI:
             "total_settled": total_settled,
             "overall_accuracy": round(overall_accuracy, 3),
             "high_conf_accuracy": round(high_conf_accuracy, 3),
+            "high_conf_count": int(hc_row.hc_total or 0),
             "markets": [
                 {
                     "ticker": r.ticker,
