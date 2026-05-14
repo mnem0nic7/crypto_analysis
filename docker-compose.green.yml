@@ -87,6 +87,8 @@ services:
     depends_on:
       migrate-green:
         condition: service_completed_successfully
+    volumes:
+      - models:/app/models
     ports:
       - "8012:8000"
     networks:
