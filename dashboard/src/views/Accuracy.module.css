@@ -1,0 +1,20 @@
+.charts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.chartCard {
+  background: var(--bg-card);
+  border-radius: 6px;
+  padding: 16px;
+}
+
+.chartTitle {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-label);
+  margin-bottom: 12px;
+}
