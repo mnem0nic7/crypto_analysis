@@ -12,7 +12,7 @@ services:
       dockerfile: ingestor/Dockerfile
     # pg_isready loop because postgres is in a separate compose project;
     # depends_on condition: service_healthy only works within the same project.
-    command: sh -c "until pg_isready -h postgres -U postgres; do sleep 2; done && alembic upgrade head"
+    command: sh -c "until python3 -c \"import socket; socket.create_connection(('postgres', 5432), 1)\" 2>/dev/null; do sleep 2; done && alembic -c alembic/alembic.ini upgrade head"
     container_name: blue-migrate
     environment:
       <<: *slot
@@ -75,7 +75,9 @@ services:
     ports:
       - "8011:8000"
     networks:
-      - infra
+      infra:
+        aliases:
+          - api
 
   dashboard-blue:
     build:
@@ -85,7 +87,7 @@ services:
     depends_on:
       - api-blue
     ports:
-      - "3001:80"
+      - "4001:80"
     networks:
       - infra
 

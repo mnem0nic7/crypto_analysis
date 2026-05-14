@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Blue-green deploy script.
 # Usage: ./scripts/deploy.sh [blue|green]
-# Required env vars: CADDY_SNIPPET_PATH, CADDYFILE_PATH
+# Optional env vars:
+#   CADDYFILE_HOST_PATH — host path to Caddyfile (default: /workspace/campaign_tracker/docker/Caddyfile)
+#   CADDY_CONTAINER     — Docker container running Caddy (default: campaign_tracker-caddy-1)
 set -euo pipefail
 
 TARGET="${1:-}"
@@ -10,25 +12,18 @@ if [[ "$TARGET" != "blue" && "$TARGET" != "green" ]]; then
   exit 1
 fi
 
-if [[ -z "${CADDY_SNIPPET_PATH:-}" ]]; then
-  echo "ERROR: CADDY_SNIPPET_PATH is not set" >&2
-  exit 1
-fi
-
-if [[ -z "${CADDYFILE_PATH:-}" ]]; then
-  echo "ERROR: CADDYFILE_PATH is not set" >&2
-  exit 1
-fi
+CADDYFILE_HOST_PATH="${CADDYFILE_HOST_PATH:-/workspace/campaign_tracker/docker/Caddyfile}"
+CADDY_CONTAINER="${CADDY_CONTAINER:-campaign_tracker-caddy-1}"
 
 # Determine old slot
 if [[ "$TARGET" == "blue" ]]; then
   OLD="green"
   API_PORT=8011
-  DASHBOARD_PORT=3001
+  DASHBOARD_PORT=4001
 else
   OLD="blue"
   API_PORT=8012
-  DASHBOARD_PORT=3002
+  DASHBOARD_PORT=4002
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -55,14 +50,35 @@ while true; do
 done
 
 echo "==> Switching Caddy to ${TARGET} slot..."
-cat > "${CADDY_SNIPPET_PATH}" <<EOF
+
+# Rewrite da.ai-al.site block in Caddyfile (add if missing, update if present)
+python3 - <<PYEOF
+import re, sys
+path = "${CADDYFILE_HOST_PATH}"
+try:
+    content = open(path).read()
+except OSError as e:
+    print(f"ERROR: Cannot read Caddyfile at {path}: {e}", file=sys.stderr)
+    sys.exit(1)
+new_block = """da.ai-al.site {
+  reverse_proxy ${TARGET}-dashboard:80
+}"""
+if 'da.ai-al.site' in content:
+    updated = re.sub(r'da\.ai-al\.site \{[^\}]+\}', new_block, content)
+else:
+    updated = content.rstrip() + '\n\n' + new_block + '\n'
+open(path, 'w').write(updated)
+PYEOF
+
+# Update local state file
+cat > "${SCRIPT_DIR}/../caddy/active-slot.caddy" <<EOF
 # Active slot: ${TARGET}
 # Managed by scripts/deploy.sh — do not edit manually
-reverse_proxy /api/* localhost:${API_PORT}
-reverse_proxy localhost:${DASHBOARD_PORT}
+reverse_proxy ${TARGET}-dashboard:80
 EOF
 
-caddy reload --config "${CADDYFILE_PATH}"
+# Pipe updated Caddyfile to caddy reload via stdin (bind mount may track original inode)
+cat "${CADDYFILE_HOST_PATH}" | docker exec -i "${CADDY_CONTAINER}" caddy reload --config /dev/stdin --adapter caddyfile
 
 echo "==> Waiting 5s for Caddy to drain in-flight requests..."
 sleep 5

@@ -1,4 +1,3 @@
 # Active slot: blue
 # Managed by scripts/deploy.sh — do not edit manually
-reverse_proxy /api/* localhost:8011
-reverse_proxy localhost:3001
+reverse_proxy blue-dashboard:80

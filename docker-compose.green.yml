@@ -10,7 +10,7 @@ services:
     build:
       context: .
       dockerfile: ingestor/Dockerfile
-    command: sh -c "until pg_isready -h postgres -U postgres; do sleep 2; done && alembic upgrade head"
+    command: sh -c "until python3 -c \"import socket; socket.create_connection(('postgres', 5432), 1)\" 2>/dev/null; do sleep 2; done && alembic -c alembic/alembic.ini upgrade head"
     container_name: green-migrate
     environment:
       <<: *slot
@@ -73,7 +73,9 @@ services:
     ports:
       - "8012:8000"
     networks:
-      - infra
+      infra:
+        aliases:
+          - api
 
   dashboard-green:
     build:
@@ -83,7 +85,7 @@ services:
     depends_on:
       - api-green
     ports:
-      - "3002:80"
+      - "4002:80"
     networks:
       - infra
 
