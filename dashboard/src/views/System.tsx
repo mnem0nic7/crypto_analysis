@@ -57,29 +57,23 @@ export default function System({ intervalMs }: { intervalMs: number }) {
   const [apiError, setApiError] = useState(false)
   const [slot, setSlot] = useState<string>('—')
   const [training, setTraining] = useState<TrainingStatus | null>(null)
-  const [fetchError, setFetchError] = useState<string | null>(null)
   const ctx = useRefreshContext()
 
   const load = useCallback(async () => {
-    try {
-      const [healthResult, slotResult, trainingResult] = await Promise.allSettled([
-        fetchHealth(),
-        fetchSlot(),
-        fetchTrainingStatus(),
-      ])
-      if (healthResult.status === 'fulfilled') {
-        setHealth(healthResult.value)
-        setApiError(false)
-      } else {
-        setHealth(null)
-        setApiError(true)
-      }
-      if (slotResult.status === 'fulfilled') setSlot(slotResult.value.slot)
-      if (trainingResult.status === 'fulfilled') setTraining(trainingResult.value)
-      setFetchError(null)
-    } catch (e) {
-      setFetchError(e instanceof Error ? e.message : String(e))
+    const [healthResult, slotResult, trainingResult] = await Promise.allSettled([
+      fetchHealth(),
+      fetchSlot(),
+      fetchTrainingStatus(),
+    ])
+    if (healthResult.status === 'fulfilled') {
+      setHealth(healthResult.value)
+      setApiError(false)
+    } else {
+      setHealth(null)
+      setApiError(true)
     }
+    if (slotResult.status === 'fulfilled') setSlot(slotResult.value.slot)
+    if (trainingResult.status === 'fulfilled') setTraining(trainingResult.value)
   }, [])
 
   const { lastRefreshed, isLoading, triggerRefresh } = useAutoRefresh(load, intervalMs)
@@ -94,8 +88,6 @@ export default function System({ intervalMs }: { intervalMs: number }) {
 
   return (
     <div>
-      {fetchError && <div className="error-banner">{fetchError}</div>}
-
       <div className={styles.cards}>
         {cards.map(svc => (
           <div key={svc.name} className={styles.serviceCard}>

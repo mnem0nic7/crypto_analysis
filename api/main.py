@@ -262,7 +262,7 @@ def create_app(session_factory_fn: Callable = None) -> FastAPI:
             session.query(func.count(Prediction.id))
             .filter(
                 Prediction.actual_outcome != None,  # noqa: E711
-                Prediction.ts >= cutoff_24h,
+                Prediction.settled_at >= cutoff_24h,
             )
             .scalar()
         ) or 0

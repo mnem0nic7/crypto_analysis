@@ -232,7 +232,7 @@ def test_stats_training_counts_settled_24h(db_session):
     )
     db_session.add(m)
     db_session.flush()
-    # One prediction settled within last 24h
+    # Both predictions were MADE within 24h, but only p_recent was SETTLED within 24h
     p_recent = Prediction(
         market_id="KXBTCUSD-TR1",
         ts=datetime.now(timezone.utc) - timedelta(hours=2),
@@ -241,10 +241,9 @@ def test_stats_training_counts_settled_24h(db_session):
         settled_at=datetime.now(timezone.utc) - timedelta(hours=2),
         actual_outcome=1,
     )
-    # One prediction settled more than 24h ago — should NOT be counted
     p_old = Prediction(
         market_id="KXBTCUSD-TR1",
-        ts=datetime.now(timezone.utc) - timedelta(hours=25),
+        ts=datetime.now(timezone.utc) - timedelta(hours=2),
         direction="DOWN", confidence=0.6, low_confidence=False,
         model_version="v1",
         settled_at=datetime.now(timezone.utc) - timedelta(hours=25),
