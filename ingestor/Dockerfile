@@ -5,6 +5,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY shared/ shared/
 COPY alembic/ alembic/
 COPY ingestor/ ingestor/
+COPY trainer/ trainer/
 COPY .env .env
 COPY Kalshi-1.txt Kalshi-1.txt
 COPY Kalshi-2-Demo.txt Kalshi-2-Demo.txt

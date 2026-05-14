@@ -14,6 +14,7 @@ from ingestor.kalshi_client import KalshiClient
 from ingestor.coinbase_client import CoinbaseClient
 from ingestor.market_discovery import filter_active_crypto_markets, upsert_markets
 from ingestor.feature_writer import fetch_and_write
+from trainer.backfill import backfill_outcomes
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -70,6 +71,9 @@ def _mark_stale(session):
 def _ingest_loop():
     while True:
         with session_scope(session_factory) as session:
+            backfilled = backfill_outcomes(session)
+            if backfilled:
+                logger.info("Settled %d outcomes", backfilled)
             if time.time() - _last_discovery > _DISCOVERY_INTERVAL:
                 _run_discovery(session)
             _mark_stale(session)
