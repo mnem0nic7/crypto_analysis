@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useRefreshContext } from '../App'
-import { fetchHealth, fetchSlot, HealthResponse } from '../api'
+import { fetchHealth, fetchSlot, fetchTrainingStatus, HealthResponse, TrainingStatus } from '../api'
 import { useAutoRefresh } from '../hooks/useAutoRefresh'
 import styles from './System.module.css'
 
@@ -46,18 +46,26 @@ function buildCards(health: HealthResponse | null, apiError: boolean): ServiceCa
   ]
 }
 
+function formatTrainedAt(iso: string | null): string {
+  if (!iso) return 'Never'
+  const d = new Date(iso)
+  return d.toLocaleString()
+}
+
 export default function System({ intervalMs }: { intervalMs: number }) {
   const [health, setHealth] = useState<HealthResponse | null>(null)
   const [apiError, setApiError] = useState(false)
   const [slot, setSlot] = useState<string>('—')
+  const [training, setTraining] = useState<TrainingStatus | null>(null)
   const [fetchError, setFetchError] = useState<string | null>(null)
   const ctx = useRefreshContext()
 
   const load = useCallback(async () => {
     try {
-      const [healthResult, slotResult] = await Promise.allSettled([
+      const [healthResult, slotResult, trainingResult] = await Promise.allSettled([
         fetchHealth(),
         fetchSlot(),
+        fetchTrainingStatus(),
       ])
       if (healthResult.status === 'fulfilled') {
         setHealth(healthResult.value)
@@ -67,6 +75,7 @@ export default function System({ intervalMs }: { intervalMs: number }) {
         setApiError(true)
       }
       if (slotResult.status === 'fulfilled') setSlot(slotResult.value.slot)
+      if (trainingResult.status === 'fulfilled') setTraining(trainingResult.value)
       setFetchError(null)
     } catch (e) {
       setFetchError(e instanceof Error ? e.message : String(e))
@@ -106,6 +115,30 @@ export default function System({ intervalMs }: { intervalMs: number }) {
             ))}
           </div>
         ))}
+
+        <div className={styles.serviceCard}>
+          <div className={styles.cardHeader}>
+            <span className={styles.cardTitle}>Training</span>
+          </div>
+          <div className={styles.cardRow}>
+            <span>Last Trained</span>
+            <span>{formatTrainedAt(training?.last_trained_at ?? null)}</span>
+          </div>
+          <div className={styles.cardRow}>
+            <span>Active Models</span>
+            <span>{training?.active_models ?? '—'}</span>
+          </div>
+          <div className={styles.cardRow}>
+            <span>Settled 24h</span>
+            <span>{training?.settled_last_24h ?? '—'}</span>
+          </div>
+          <div className={styles.cardRow}>
+            <span>Unmodeled</span>
+            <span style={(training?.unmodeled_markets ?? 0) > 0 ? { color: 'var(--red)' } : {}}>
+              {training?.unmodeled_markets ?? '—'}
+            </span>
+          </div>
+        </div>
 
         <div className={`${styles.serviceCard} ${styles.deployCard}`}>
           <div className={styles.cardHeader}>

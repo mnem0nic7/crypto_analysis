@@ -1,6 +1,6 @@
 .cards {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 16px;
   margin-bottom: 16px;
 }
@@ -44,5 +44,5 @@
   background: var(--bg-card);
   border-radius: 6px;
   padding: 20px;
-  grid-column: span 3;
+  grid-column: span 4;
 }
