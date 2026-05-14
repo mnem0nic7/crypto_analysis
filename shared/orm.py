@@ -65,7 +65,7 @@ class Prediction(Base):
 class ModelRegistry(Base):
     __tablename__ = "model_registry"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
     market_id = Column(Text, ForeignKey("markets.market_id"), nullable=False)
     version = Column(Text, nullable=False)
     trained_at = Column(TIMESTAMP(timezone=True), nullable=False)
