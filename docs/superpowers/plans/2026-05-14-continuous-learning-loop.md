@@ -15,6 +15,7 @@
 | File | Change |
 |------|--------|
 | `trainer/backfill.py` | Remove `_strip_tz()`; use tz-aware datetimes in both functions |
+| `ingestor/Dockerfile` | Add `COPY trainer/ trainer/` so `backfill_outcomes` import resolves |
 | `ingestor/main.py` | Import + call `backfill_outcomes()` at the top of `_ingest_loop()` |
 | `trainer/main.py` | Remove `TRAINING_CAMPAIGN_ENABLED` guard; add daemon `while True` loop |
 | `api/main.py` | Add `GET /stats/training` endpoint |
@@ -137,13 +138,39 @@ git commit -m "fix: remove _strip_tz — use tz-aware datetimes for Postgres com
 ### Task 2: Add outcome settlement to the ingestor loop
 
 **Files:**
+- Modify: `ingestor/Dockerfile` (add `COPY trainer/ trainer/`)
 - Modify: `ingestor/main.py`
 
 **Background:** The ingestor already runs every 30 s and has a DB session open.
 Calling `backfill_outcomes()` at the top of each iteration means any prediction whose
 `settled_at` has passed will get its `actual_outcome` filled within 30 s of market close.
+`trainer.backfill` only imports from `shared.orm` — no ML packages needed — but the
+`trainer/` Python package must be present in the container.
 
-- [ ] **Step 1: Update `ingestor/main.py`**
+- [ ] **Step 1: Add `COPY trainer/ trainer/` to `ingestor/Dockerfile`**
+
+Replace the entire content of `ingestor/Dockerfile`:
+
+```dockerfile
+FROM python:3.11-slim
+WORKDIR /app
+COPY ingestor/requirements.txt requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+COPY shared/ shared/
+COPY alembic/ alembic/
+COPY ingestor/ ingestor/
+COPY trainer/ trainer/
+COPY .env .env
+COPY Kalshi-1.txt Kalshi-1.txt
+COPY Kalshi-2-Demo.txt Kalshi-2-Demo.txt
+COPY cdp_api_key.json cdp_api_key.json
+CMD ["python", "-m", "ingestor.main"]
+```
+
+The only change from the existing file is adding `COPY trainer/ trainer/` after `COPY ingestor/ ingestor/`.
+`trainer.backfill` imports only from `shared.orm` — no new pip packages are required.
+
+- [ ] **Step 2: Update `ingestor/main.py`**
 
 Open `ingestor/main.py`. Make two changes:
 
@@ -173,7 +200,7 @@ def _ingest_loop():
         time.sleep(_POLL_INTERVAL)
 ```
 
-- [ ] **Step 2: Run the full test suite to confirm no regressions**
+- [ ] **Step 3: Run the full test suite to confirm no regressions**
 
 ```bash
 pytest --tb=short -q
@@ -181,10 +208,10 @@ pytest --tb=short -q
 
 Expected: all tests pass. The ingestor module-level code (KalshiClient, CoinbaseClient init) is not executed during pytest because tests never import `ingestor.main` directly.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add ingestor/main.py
+git add ingestor/Dockerfile ingestor/main.py
 git commit -m "feat: settle prediction outcomes in ingestor loop every 30s"
 ```
 
@@ -247,16 +274,20 @@ if __name__ == "__main__":
         "Trainer daemon starting — cooldown=%ds", settings.training_campaign_cooldown_seconds
     )
     while True:
-        run_training_campaign(settings, session_factory)
-        logger.info(
-            "Campaign done — sleeping %ds", settings.training_campaign_cooldown_seconds
-        )
+        try:
+            run_training_campaign(settings, session_factory)
+            logger.info(
+                "Campaign done — sleeping %ds", settings.training_campaign_cooldown_seconds
+            )
+        except Exception as exc:
+            logger.error("Training campaign failed: %s — retrying after cooldown", exc)
         time.sleep(settings.training_campaign_cooldown_seconds)
 ```
 
 Key changes from the old version:
 - `TRAINING_CAMPAIGN_ENABLED` check removed from `run_training_campaign()`
 - `__main__` block now loops forever, sleeping `training_campaign_cooldown_seconds` between runs
+- `try/except` around `run_training_campaign` ensures a DB blip or model error doesn't kill the daemon
 
 - [ ] **Step 2: Run the full test suite**
 
