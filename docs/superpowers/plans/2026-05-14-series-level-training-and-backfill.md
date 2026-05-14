@@ -14,7 +14,7 @@
 
 | File | Action | Responsibility |
 |------|--------|----------------|
-| `predictor/feature_builder.py` | Modify line 38 | Fix `now = ts` so windowed features use prediction timestamp |
+| `predictor/feature_builder.py` | Modify line 57 | Fix `now = ts` so windowed features use prediction timestamp |
 | `trainer/dataset.py` | Rewrite | `build_training_dataset(series_ticker)` — JOIN through `Market.ticker` |
 | `trainer/train.py` | Rewrite | `train_and_promote(series_ticker)` — create sentinel Market row, store model under series ticker |
 | `trainer/main.py` | Modify | Iterate distinct `Market.ticker` values, not active `market_id`s |
@@ -66,14 +66,14 @@ def test_feature_builder_uses_ts_not_wall_clock():
 - [ ] **Step 2: Run test to verify it fails**
 
 ```bash
-cd /workspace/crypto_analysis && python -m pytest tests/test_feature_builder.py::test_feature_builder_uses_ts_not_wall_clock -v
+cd /workspace/crypto_analysis && python3 -m pytest tests/test_feature_builder.py::test_feature_builder_uses_ts_not_wall_clock -v
 ```
 
 Expected: `FAILED — AssertionError: price_momentum_5m must be non-zero`
 
 - [ ] **Step 3: Apply the one-line fix**
 
-In `predictor/feature_builder.py`, find line 38:
+In `predictor/feature_builder.py`, find line 57:
 ```python
     now = datetime.now(timezone.utc)
 ```
@@ -109,7 +109,7 @@ def build_feature_vector(
 - [ ] **Step 4: Run test to verify it passes**
 
 ```bash
-cd /workspace/crypto_analysis && python -m pytest tests/test_feature_builder.py -v
+cd /workspace/crypto_analysis && python3 -m pytest tests/test_feature_builder.py -v
 ```
 
 Expected: all 6 tests PASS.
@@ -369,7 +369,7 @@ def test_backfill_skips_already_settled(db_session):
 - [ ] **Step 2: Run tests to verify they fail**
 
 ```bash
-cd /workspace/crypto_analysis && python -m pytest tests/test_trainer.py -v 2>&1 | head -40
+cd /workspace/crypto_analysis && python3 -m pytest tests/test_trainer.py -v 2>&1 | head -40
 ```
 
 Expected: multiple FAILs — `build_training_dataset` still takes `market_id`, `train_and_promote` still takes `market_id`.
@@ -485,10 +485,46 @@ to:
 TRAINING_CAMPAIGN_LOOKBACK_HOURS=2160
 ```
 
+- [ ] **Step 5b: Fix two pre-existing `test_settings.py` failures**
+
+Two tests in `tests/test_settings.py` were broken by an earlier API URL update and are unrelated to this feature — but since we are touching `settings.py` we fix them now.
+
+**`test_settings_demo_key`**: The test didn't monkeypatch `KALSHI_ENV=demo`, so pydantic-settings read `KALSHI_ENV=live` from the real `.env` file. Add the missing monkeypatch line:
+
+```python
+def test_settings_demo_key(monkeypatch):
+    monkeypatch.setenv("DEMO_KALSHI_API_KEY", "demo-key")
+    monkeypatch.setenv("DEMO_KALSHI_READ_PRIVATE_KEY_PATH", "Kalshi-2-Demo.txt")
+    monkeypatch.setenv("DEMO_KALSHI_WRITE_PRIVATE_KEY_PATH", "Kalshi-2-Demo.txt")
+    monkeypatch.setenv("LIVE_KALSHI_API_KEY", "live-key")
+    monkeypatch.setenv("LIVE_KALSHI_READ_PRIVATE_KEY_PATH", "Kalshi-1.txt")
+    monkeypatch.setenv("POSTGRES_PASSWORD", "postgres")
+    monkeypatch.setenv("COINBASE_CDP_KEY_NAME", "orgs/x/apiKeys/y")
+    monkeypatch.setenv("COINBASE_CDP_PRIVATE_KEY", "dummy-key")
+    monkeypatch.setenv("KALSHI_ENV", "demo")          # ← ADD THIS LINE
+    s = Settings()
+    assert s.kalshi_api_key == "demo-key"
+    assert s.kalshi_env == "demo"
+    assert s.risk_stale_market_seconds == 60
+```
+
+**`test_settings_live_base_url`**: The Kalshi base URL changed from `trading-api.kalshi.com` to `api.elections.kalshi.com`. Update the assertion:
+
+```python
+    assert "api.elections.kalshi.com" in s.kalshi_base_url   # was: "trading-api.kalshi.com"
+    assert s.kalshi_api_key == "live-key"
+```
+
+Run after patching:
+```bash
+cd /workspace/crypto_analysis && python3 -m pytest tests/test_settings.py -v
+```
+Expected: all 3 settings tests PASS.
+
 - [ ] **Step 6: Run tests**
 
 ```bash
-cd /workspace/crypto_analysis && python -m pytest tests/test_trainer.py -v 2>&1 | head -60
+cd /workspace/crypto_analysis && python3 -m pytest tests/test_trainer.py -v 2>&1 | head -60
 ```
 
 Expected: `test_build_training_dataset_*` tests now PASS. `test_train_*` tests still fail (train_and_promote not yet updated).
@@ -496,12 +532,14 @@ Expected: `test_build_training_dataset_*` tests now PASS. `test_train_*` tests s
 - [ ] **Step 7: Commit**
 
 ```bash
-git add trainer/dataset.py shared/settings.py .env.example tests/test_trainer.py
+git add trainer/dataset.py shared/settings.py .env.example \
+    tests/test_trainer.py tests/test_settings.py
 git commit -m "feat: trainer/dataset aggregates across all contracts of a series
 
 build_training_dataset(series_ticker) JOINs through markets.ticker so
 predictions from all historical contracts feed one model. lookback_hours
-default raised to 2160 (90 days) so backfilled data is included."
+default raised to 2160 (90 days) so backfilled data is included.
+Also fixes two stale settings tests (KALSHI_ENV monkeypatch and elections URL)."
 ```
 
 ---
@@ -684,7 +722,7 @@ if __name__ == "__main__":
 - [ ] **Step 3: Run all trainer tests**
 
 ```bash
-cd /workspace/crypto_analysis && python -m pytest tests/test_trainer.py -v
+cd /workspace/crypto_analysis && python3 -m pytest tests/test_trainer.py -v
 ```
 
 Expected: all 8 tests PASS.
@@ -692,7 +730,7 @@ Expected: all 8 tests PASS.
 - [ ] **Step 4: Run full test suite to check for regressions**
 
 ```bash
-cd /workspace/crypto_analysis && python -m pytest tests/ -v 2>&1 | tail -20
+cd /workspace/crypto_analysis && python3 -m pytest tests/ -v 2>&1 | tail -20
 ```
 
 Expected: all tests PASS (or note any pre-existing failures unrelated to this task).
@@ -745,7 +783,7 @@ def test_run_inference_looks_up_model_by_series_ticker(db_session):
 - [ ] **Step 2: Run test to verify it fails**
 
 ```bash
-cd /workspace/crypto_analysis && python -m pytest tests/test_inference.py::test_run_inference_looks_up_model_by_series_ticker -v
+cd /workspace/crypto_analysis && python3 -m pytest tests/test_inference.py::test_run_inference_looks_up_model_by_series_ticker -v
 ```
 
 Expected: `FAILED — AssertionError: expected call with 'KXBTC15M' but got 'KXBTC15M-STCK'`
@@ -838,7 +876,7 @@ def run_inference(session: Session, market: Market, model_loader) -> Prediction 
 - [ ] **Step 4: Run all inference and full suite tests**
 
 ```bash
-cd /workspace/crypto_analysis && python -m pytest tests/test_inference.py tests/test_trainer.py tests/test_feature_builder.py -v
+cd /workspace/crypto_analysis && python3 -m pytest tests/test_inference.py tests/test_trainer.py tests/test_feature_builder.py -v
 ```
 
 Expected: all tests PASS.
@@ -906,7 +944,7 @@ def test_get_candles_with_start_end_omits_limit(monkeypatch):
 - [ ] **Step 3: Run test to verify it fails**
 
 ```bash
-cd /workspace/crypto_analysis && python -m pytest tests/test_coinbase_client.py::test_get_candles_with_start_end_omits_limit -v
+cd /workspace/crypto_analysis && python3 -m pytest tests/test_coinbase_client.py::test_get_candles_with_start_end_omits_limit -v
 ```
 
 Expected: `FAILED — TypeError: get_candles() got unexpected keyword argument 'start'`
@@ -968,10 +1006,73 @@ Add this method to the `KalshiClient` class (after `get_market_price`):
         return {"markets": data.get("markets", []), "cursor": data.get("cursor")}
 ```
 
+- [ ] **Step 5c: Fix two pre-existing `test_kalshi_client.py` failures**
+
+Two tests were broken by the earlier Kalshi API migration (new field names, new per-series query logic) and should be fixed while we are touching `kalshi_client.py`.
+
+Replace the full content of the two failing tests in `tests/test_kalshi_client.py`:
+
+**`test_get_markets_filters_crypto`** — the new `get_crypto_markets` queries per-series ticker instead of filtering by category. The mock should return one market per series and the assertion should count all 7 × 1 = 7 markets returned:
+
+```python
+def test_get_markets_filters_crypto():
+    client = KalshiClient(
+        api_key="test-key",
+        private_key_path="Kalshi-2-Demo.txt",
+        base_url="https://demo-api.kalshi.co/trade-api/v2",
+    )
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        "markets": [
+            {"ticker": "KXBTC15M-26MAY141715-15", "series_ticker": "KXBTC15M",
+             "status": "open", "close_time": "2026-05-14T18:15:00Z",
+             "yes_bid_dollars": "0.55", "yes_ask_dollars": "0.57",
+             "volume_fp": "1200"},
+        ]
+    }
+    mock_response.raise_for_status = MagicMock()
+    with patch.object(client._http, "get", return_value=mock_response):
+        markets = client.get_crypto_markets()
+    # 7 series × 1 market each = 7 total; each market gets series_ticker injected
+    assert len(markets) == 7
+    assert markets[0]["series_ticker"] in [
+        "KXBTC15M", "KXETH15M", "KXSOL15M", "KXXRP15M",
+        "KXDOGE15M", "KXBNB15M", "KXHYPE15M",
+    ]
+```
+
+**`test_get_market_price_returns_midpoint`** — the new API uses dollar-string fields (`yes_bid_dollars`, `yes_ask_dollars`) instead of integer-cent fields (`yes_bid`, `yes_ask`). Update the mock:
+
+```python
+def test_get_market_price_returns_midpoint():
+    client = KalshiClient(
+        api_key="test-key",
+        private_key_path="Kalshi-2-Demo.txt",
+        base_url="https://demo-api.kalshi.co/trade-api/v2",
+    )
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        "market": {
+            "ticker": "KXBTC15M-26MAY141715-15",
+            "yes_bid_dollars": "0.54",
+            "yes_ask_dollars": "0.58",
+            "no_bid_dollars": "0.42",
+            "no_ask_dollars": "0.46",
+            "volume_fp": "1500.0",
+        }
+    }
+    mock_response.raise_for_status = MagicMock()
+    with patch.object(client._http, "get", return_value=mock_response):
+        price = client.get_market_price("KXBTC15M-26MAY141715-15")
+    assert price["yes_price"] == pytest.approx(0.56, abs=0.01)
+    assert price["no_price"] == pytest.approx(0.44, abs=0.01)
+    assert price["volume"] == pytest.approx(1500.0)
+```
+
 - [ ] **Step 6: Run all client tests**
 
 ```bash
-cd /workspace/crypto_analysis && python -m pytest tests/test_coinbase_client.py tests/test_kalshi_client.py -v
+cd /workspace/crypto_analysis && python3 -m pytest tests/test_coinbase_client.py tests/test_kalshi_client.py -v
 ```
 
 Expected: all tests PASS.
@@ -979,11 +1080,13 @@ Expected: all tests PASS.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add ingestor/coinbase_client.py ingestor/kalshi_client.py tests/test_coinbase_client.py
+git add ingestor/coinbase_client.py ingestor/kalshi_client.py \
+    tests/test_coinbase_client.py tests/test_kalshi_client.py
 git commit -m "feat: add start/end params to get_candles and get_settled_markets_page to KalshiClient
 
 Enables historical backfill: Coinbase candles can be fetched for arbitrary
-time ranges; Kalshi settled market pages can be paginated with a cursor."
+time ranges; Kalshi settled market pages can be paginated with a cursor.
+Also fixes two stale kalshi tests that used pre-migration cent-field mocks."
 ```
 
 ---
@@ -1104,7 +1207,7 @@ def test_process_one_market_skips_when_too_few_candles(db_session):
 - [ ] **Step 2: Run tests to verify they fail**
 
 ```bash
-cd /workspace/crypto_analysis && python -m pytest tests/test_historical_backfill.py -v 2>&1 | head -20
+cd /workspace/crypto_analysis && python3 -m pytest tests/test_historical_backfill.py -v 2>&1 | head -20
 ```
 
 Expected: `ERROR — cannot import name '_process_one_market' from 'ingestor.historical_backfill'`
@@ -1324,7 +1427,7 @@ if __name__ == "__main__":
 - [ ] **Step 4: Run the backfill tests**
 
 ```bash
-cd /workspace/crypto_analysis && python -m pytest tests/test_historical_backfill.py -v
+cd /workspace/crypto_analysis && python3 -m pytest tests/test_historical_backfill.py -v
 ```
 
 Expected: all 5 tests PASS.
@@ -1332,7 +1435,7 @@ Expected: all 5 tests PASS.
 - [ ] **Step 5: Run full test suite**
 
 ```bash
-cd /workspace/crypto_analysis && python -m pytest tests/ -v 2>&1 | tail -25
+cd /workspace/crypto_analysis && python3 -m pytest tests/ -v 2>&1 | tail -25
 ```
 
 Expected: all tests PASS.
