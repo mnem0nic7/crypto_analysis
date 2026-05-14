@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     def kalshi_base_url(self) -> str:
         if self.kalshi_env == "demo":
             return "https://demo-api.kalshi.co/trade-api/v2"
-        return "https://trading-api.kalshi.com/trade-api/v2"
+        return "https://api.elections.kalshi.com/trade-api/v2"
 
     @property
     def db_url(self) -> str:
