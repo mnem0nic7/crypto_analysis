@@ -1,3 +1,10 @@
+.statGrid6 {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
 .charts {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -17,4 +24,38 @@
   letter-spacing: 0.08em;
   color: var(--text-label);
   margin-bottom: 12px;
+}
+
+.chartHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.windowToggle {
+  display: flex;
+  gap: 4px;
+}
+
+.windowBtn {
+  padding: 2px 8px;
+  font-size: 10px;
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 3px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.windowBtn:hover {
+  background: none;
+  color: var(--text);
+}
+
+.windowBtnActive {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  color: #fff !important;
 }
