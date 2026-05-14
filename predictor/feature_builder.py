@@ -56,9 +56,17 @@ def build_feature_vector(
     volumes = np.array([_f(r.volume) for r in rows])
     now = datetime.now(timezone.utc)
 
+    def _ts_utc(ts) -> datetime:
+        """Return a timezone-aware UTC datetime, adding UTC if naive (e.g. from SQLite)."""
+        if ts is None:
+            return now
+        if getattr(ts, "tzinfo", None) is None:
+            return ts.replace(tzinfo=timezone.utc)
+        return ts
+
     def _within(minutes: float) -> list:
         cutoff = now - timedelta(minutes=minutes)
-        return [r for r in rows if r.ts >= cutoff]
+        return [r for r in rows if _ts_utc(r.ts) >= cutoff]
 
     def _momentum(minutes: float) -> float:
         window = _within(minutes)

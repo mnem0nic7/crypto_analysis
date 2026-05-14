@@ -5,6 +5,9 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import declarative_base
 
+# SQLite does not support BigInteger RETURNING; use Integer as a variant for tests
+_BigInt = BigInteger().with_variant(Integer, "sqlite")
+
 Base = declarative_base()
 
 
@@ -23,7 +26,7 @@ class Market(Base):
 class RawFeature(Base):
     __tablename__ = "raw_features"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(_BigInt, primary_key=True, autoincrement=True)
     market_id = Column(Text, ForeignKey("markets.market_id"), nullable=False)
     ts = Column(TIMESTAMP(timezone=True), nullable=False)
     # Coinbase price
@@ -50,7 +53,7 @@ class RawFeature(Base):
 class Prediction(Base):
     __tablename__ = "predictions"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(_BigInt, primary_key=True, autoincrement=True)
     market_id = Column(Text, ForeignKey("markets.market_id"), nullable=False)
     ts = Column(TIMESTAMP(timezone=True), nullable=False)
     direction = Column(Text, nullable=False)        # "UP" | "DOWN"
@@ -65,7 +68,7 @@ class Prediction(Base):
 class ModelRegistry(Base):
     __tablename__ = "model_registry"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    id = Column(_BigInt, primary_key=True, autoincrement=True)
     market_id = Column(Text, ForeignKey("markets.market_id"), nullable=False)
     version = Column(Text, nullable=False)
     trained_at = Column(TIMESTAMP(timezone=True), nullable=False)
