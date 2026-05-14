@@ -143,3 +143,58 @@ def test_feature_vectors_page_size_capped_at_50(db_session):
     resp = client.get("/data/feature-vectors?series_ticker=KXBTCUSD&page_size=200")
     assert resp.status_code == 200
     assert resp.json()["page_size"] == 50
+
+
+def _seed_full_training_slice(session, ticker="KXBTCUSD", prefix="SL", n_preds=6):
+    """Seed n_preds settled predictions each with 15 raw_feature context rows."""
+    now = datetime.now(timezone.utc)
+    market_id = f"{ticker}-{prefix}1"
+    _seed_market(session, market_id, ticker)
+    _seed_raw_features(session, market_id, n=15)
+    for i in range(n_preds):
+        pred_ts = now - timedelta(seconds=(n_preds - i) * 30)
+        _seed_settled_prediction(session, market_id, pred_ts, outcome=i % 2)
+    return market_id
+
+
+def test_stats_returns_25_features(db_session):
+    _seed_full_training_slice(db_session, "KXBTCUSD", "ST1")
+    client = _make_app(db_session)
+    resp = client.get("/data/stats?series_ticker=KXBTCUSD")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body) == 25
+    names = [row["feature"] for row in body]
+    assert "price_momentum_1m" in names
+    assert "kalshi_deviation" in names
+    first = body[0]
+    assert all(k in first for k in ("feature", "mean", "std", "min", "max", "null_count"))
+
+
+def test_stats_returns_empty_when_insufficient_data(db_session):
+    _seed_market(db_session, "KXBTCUSD-ST2", "KXBTCUSD")
+    client = _make_app(db_session)
+    resp = client.get("/data/stats?series_ticker=KXBTCUSD")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_correlations_returns_25_entries(db_session):
+    _seed_full_training_slice(db_session, "KXBTCUSD", "CR1")
+    client = _make_app(db_session)
+    resp = client.get("/data/correlations?series_ticker=KXBTCUSD")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body) == 25
+    assert all("feature" in row and "r" in row for row in body)
+    # Should be sorted by |r| descending
+    abs_rs = [abs(row["r"]) for row in body]
+    assert abs_rs == sorted(abs_rs, reverse=True)
+
+
+def test_correlations_returns_empty_when_insufficient_data(db_session):
+    _seed_market(db_session, "KXBTCUSD-CR2", "KXBTCUSD")
+    client = _make_app(db_session)
+    resp = client.get("/data/correlations?series_ticker=KXBTCUSD")
+    assert resp.status_code == 200
+    assert resp.json() == []

@@ -312,6 +312,60 @@ def create_app(session_factory_fn: Callable = None) -> FastAPI:
             "page_size": page_size,
         }
 
+    def _get_feature_matrix(session, series_ticker, from_ts, to_ts):
+        import numpy as np
+        from shared.feature_builder import build_feature_vector
+        from shared.orm import RawFeature as RF
+
+        q = (
+            session.query(Prediction)
+            .join(Market, Prediction.market_id == Market.market_id)
+            .filter(Market.ticker == series_ticker, Prediction.actual_outcome != None)  # noqa: E711
+        )
+        if from_ts:
+            q = q.filter(Prediction.ts >= from_ts)
+        if to_ts:
+            q = q.filter(Prediction.ts <= to_ts)
+        preds = q.order_by(Prediction.ts.asc()).all()
+
+        if len(preds) < 5:
+            return None, None
+
+        raw_q = (
+            session.query(RF)
+            .join(Market, RF.market_id == Market.market_id)
+            .filter(Market.ticker == series_ticker)
+        )
+        if from_ts:
+            raw_q = raw_q.filter(RF.ts >= from_ts)
+        all_raw = raw_q.order_by(RF.ts.asc()).all()
+        raw_by_market: dict = {}
+        for r in all_raw:
+            raw_by_market.setdefault(r.market_id, []).append(r)
+
+        X, y = [], []
+        for pred in preds:
+            pred_ts = pred.ts if pred.ts.tzinfo else pred.ts.replace(tzinfo=timezone.utc)
+            context = [
+                r for r in raw_by_market.get(pred.market_id, [])
+                if (r.ts if r.ts.tzinfo else r.ts.replace(tzinfo=timezone.utc)) <= pred_ts
+            ][-40:]
+            market = session.get(Market, pred.market_id)
+            minutes_to_close = 7.5
+            if market and market.close_time:
+                ct = market.close_time if market.close_time.tzinfo else market.close_time.replace(tzinfo=timezone.utc)
+                minutes_to_close = max(0.0, (ct - pred_ts).total_seconds() / 60)
+            result = build_feature_vector(context, minutes_to_close=minutes_to_close, ts=pred_ts)
+            if result is None:
+                continue
+            vec, _ = result
+            X.append(vec)
+            y.append(int(pred.actual_outcome))
+
+        if len(X) < 5:
+            return None, None
+        return np.array(X), np.array(y)
+
     @app.get("/data/feature-vectors")
     def get_feature_vectors(
         series_ticker: str,
@@ -382,6 +436,51 @@ def create_app(session_factory_fn: Callable = None) -> FastAPI:
             })
 
         return {"rows": rows, "total": total, "page": page, "page_size": page_size, "skipped": skipped}
+
+    @app.get("/data/stats")
+    def get_data_stats(
+        series_ticker: str,
+        from_ts: datetime | None = None,
+        to_ts: datetime | None = None,
+        session: Session = Depends(_get_db),
+    ):
+        import numpy as np
+        from shared.feature_builder import FEATURE_NAMES
+
+        X, _ = _get_feature_matrix(session, series_ticker, from_ts, to_ts)
+        if X is None:
+            return []
+        return [
+            {
+                "feature": name,
+                "mean": round(float(np.mean(X[:, i])), 6),
+                "std": round(float(np.std(X[:, i])), 6),
+                "min": round(float(np.min(X[:, i])), 6),
+                "max": round(float(np.max(X[:, i])), 6),
+                "null_count": 0,
+            }
+            for i, name in enumerate(FEATURE_NAMES)
+        ]
+
+    @app.get("/data/correlations")
+    def get_data_correlations(
+        series_ticker: str,
+        from_ts: datetime | None = None,
+        to_ts: datetime | None = None,
+        session: Session = Depends(_get_db),
+    ):
+        import numpy as np
+        from shared.feature_builder import FEATURE_NAMES
+
+        X, y = _get_feature_matrix(session, series_ticker, from_ts, to_ts)
+        if X is None:
+            return []
+        results = []
+        for i, name in enumerate(FEATURE_NAMES):
+            col = X[:, i]
+            r = float(np.corrcoef(col, y)[0, 1]) if np.std(col) > 0 else 0.0
+            results.append({"feature": name, "r": round(r, 4)})
+        return sorted(results, key=lambda x: abs(x["r"]), reverse=True)
 
     @app.get("/stats/training")
     def get_stats_training(session: Session = Depends(_get_db)):
