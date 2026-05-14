@@ -60,3 +60,22 @@ def test_no_nan_in_vector():
     rows = _make_rows(40)
     vec, names = build_feature_vector(rows, minutes_to_close=7.0, ts=datetime.now(timezone.utc))
     assert not np.any(np.isnan(vec))
+
+
+def test_feature_builder_uses_ts_not_wall_clock():
+    """Momentum must be non-zero for rows timestamped 2 hours in the past."""
+    past_ts = datetime.now(timezone.utc) - timedelta(hours=2)
+    rows = [
+        _make_row(60000 + i * 10, minutes_ago=0)  # we'll override ts manually
+        for i in range(40)
+    ]
+    for i, r in enumerate(rows):
+        r.ts = past_ts - timedelta(minutes=40 - i)  # rows span [past_ts-40m .. past_ts]
+    result = build_feature_vector(rows, minutes_to_close=7.5, ts=past_ts)
+    assert result is not None, "Should produce a vector for historical rows"
+    vec, names = result
+    mom_5m_idx = names.index("price_momentum_5m")
+    assert vec[mom_5m_idx] != 0.0, (
+        "price_momentum_5m must be non-zero — if 0, _within() is using datetime.now() "
+        "instead of ts, returning empty windows for historical data"
+    )

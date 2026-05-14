@@ -54,7 +54,7 @@ def build_feature_vector(
 
     closes = np.array([_f(r.price_close) for r in rows])
     volumes = np.array([_f(r.volume) for r in rows])
-    now = datetime.now(timezone.utc)
+    now = ts
 
     def _ts_utc(ts) -> datetime:
         """Return a timezone-aware UTC datetime, adding UTC if naive (e.g. from SQLite)."""
