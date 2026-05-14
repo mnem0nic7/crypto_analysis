@@ -4,7 +4,7 @@ import numpy as np
 from datetime import datetime, timezone, timedelta
 from sqlalchemy.orm import Session
 from shared.orm import Market, RawFeature, Prediction
-from predictor.feature_builder import build_feature_vector
+from shared.feature_builder import build_feature_vector
 
 logger = logging.getLogger(__name__)
 _MIN_SAMPLES = 5
