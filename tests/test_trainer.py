@@ -61,3 +61,44 @@ def test_build_training_dataset_returns_xy(db_session):
 def test_build_training_dataset_returns_none_for_insufficient_data(db_session):
     result = build_training_dataset(db_session, "NO_DATA_MARKET", lookback_hours=24)
     assert result is None
+
+
+# Append to tests/test_trainer.py
+from trainer.train import train_and_promote
+
+
+def test_train_and_promote_creates_model_file(db_session, tmp_path):
+    _seed_settled_data(db_session, "KXBTCUSD-TN")
+    result = train_and_promote(
+        session=db_session,
+        market_id="KXBTCUSD-TN",
+        lookback_hours=24,
+        models_dir=str(tmp_path),
+    )
+    assert result is not None
+    assert result["promoted"] in (True, False)
+    assert "brier_score" in result
+
+
+def test_train_does_not_promote_when_worse(db_session, tmp_path):
+    from shared.orm import ModelRegistry
+    _seed_settled_data(db_session, "KXBTCUSD-NP")
+    # Insert a very good existing active model
+    reg = ModelRegistry(
+        market_id="KXBTCUSD-NP",
+        version="v0",
+        trained_at=datetime.now(timezone.utc),
+        training_rows=100,
+        brier_score=0.001,   # near-perfect — new model won't beat this
+        artifact_path=str(tmp_path / "dummy.joblib"),
+        is_active=True,
+    )
+    db_session.add(reg)
+    db_session.flush()
+    result = train_and_promote(
+        session=db_session,
+        market_id="KXBTCUSD-NP",
+        lookback_hours=24,
+        models_dir=str(tmp_path),
+    )
+    assert result["promoted"] is False
