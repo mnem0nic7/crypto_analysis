@@ -16,3 +16,5 @@ dashboard/node_modules/
 dashboard/dist/
 .superpowers/
 .env
+Kalshi*.txt
+cdp_api_key.json
