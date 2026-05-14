@@ -1,0 +1,31 @@
+# docker-compose.infra.yml — Postgres only. Start once; never touch during deploys.
+# docker compose -f docker-compose.infra.yml up -d
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: crypto_analysis
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - infra
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
+    name: crypto_analysis_pgdata
+  models:
+    name: crypto_analysis_models
+
+networks:
+  infra:
+    name: crypto_analysis_infra
