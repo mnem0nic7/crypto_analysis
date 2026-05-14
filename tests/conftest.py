@@ -5,7 +5,7 @@ from sqlalchemy.orm import sessionmaker
 from shared.orm import Base
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def test_engine():
     engine = create_engine(
         "sqlite:///:memory:",

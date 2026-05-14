@@ -33,6 +33,7 @@ def test_get_model_loads_active_model(db_session, tmp_path):
     path = str(tmp_path / "KXBTCUSD-002_v1.joblib")
     joblib.dump(clf, path)
     reg = ModelRegistry(
+        id=1,
         market_id="KXBTCUSD-002",
         version="v1",
         trained_at=datetime.now(timezone.utc),
@@ -56,6 +57,7 @@ def test_reload_picks_up_newer_model(db_session, tmp_path):
     path = str(tmp_path / "KXBTCUSD-003_v2.joblib")
     joblib.dump(clf, path)
     reg = ModelRegistry(
+        id=2,
         market_id="KXBTCUSD-003",
         version="v2",
         trained_at=datetime.now(timezone.utc),
