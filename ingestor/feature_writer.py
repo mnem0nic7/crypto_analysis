@@ -35,12 +35,12 @@ def warm_up_if_needed(
     if not candles:
         return
 
-    # SQLite strips tzinfo; normalise before .timestamp() to avoid local-TZ skew.
-    cutoff = datetime.now(timezone.utc) - timedelta(minutes=_WARMUP_CANDLES + 1)
+    # Load all existing ts for this market. Safe: warm_up only runs when count < 20,
+    # so there are at most 19 rows. SQLite strips tzinfo; normalise before .timestamp().
     existing_ts_unix = {
         int((r.ts if r.ts.tzinfo else r.ts.replace(tzinfo=timezone.utc)).timestamp())
         for r in session.query(RawFeature.ts)
-        .filter(RawFeature.market_id == market_id, RawFeature.ts >= cutoff)
+        .filter(RawFeature.market_id == market_id)
         .all()
     }
 

@@ -136,3 +136,17 @@ def test_warm_up_idempotent_skips_existing_timestamps(db_session):
 
     total = db_session.query(RawFeature).filter_by(market_id="KXBTCUSD-WU3").count()
     assert total == 15  # 3 pre-existing + 12 new, no duplicates
+
+
+def test_warm_up_does_not_raise_when_coinbase_fails(db_session):
+    from ingestor.feature_writer import warm_up_if_needed
+    _make_market("KXBTCUSD-WU4", db_session)
+
+    mock_cb = MagicMock()
+    mock_cb.get_candles.side_effect = Exception("network error")
+
+    warm_up_if_needed(db_session, "KXBTCUSD-WU4", "BTC-USD", mock_cb)
+
+    # No rows written, no exception raised
+    count = db_session.query(RawFeature).filter_by(market_id="KXBTCUSD-WU4").count()
+    assert count == 0
