@@ -11,11 +11,6 @@ logger = logging.getLogger(__name__)
 
 
 def run_training_campaign(settings: Settings, session_factory) -> None:
-    if not settings.training_campaign_enabled:
-        logger.info("TRAINING_CAMPAIGN_ENABLED=false — exiting")
-        return
-
-    # Backfill outcomes first so training data is fresh
     with session_scope(session_factory) as session:
         backfilled = backfill_outcomes(session)
         logger.info("Backfilled %d outcomes before training", backfilled)
@@ -41,4 +36,15 @@ def run_training_campaign(settings: Settings, session_factory) -> None:
 if __name__ == "__main__":
     settings = Settings()
     session_factory = make_session_factory(settings)
-    run_training_campaign(settings, session_factory)
+    logger.info(
+        "Trainer daemon starting — cooldown=%ds", settings.training_campaign_cooldown_seconds
+    )
+    while True:
+        try:
+            run_training_campaign(settings, session_factory)
+            logger.info(
+                "Campaign done — sleeping %ds", settings.training_campaign_cooldown_seconds
+            )
+        except Exception as exc:
+            logger.error("Training campaign failed: %s — retrying after cooldown", exc)
+        time.sleep(settings.training_campaign_cooldown_seconds)
