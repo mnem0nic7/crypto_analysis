@@ -6,6 +6,7 @@ import Signals from './views/Signals'
 import Accuracy from './views/Accuracy'
 import Models from './views/Models'
 import System from './views/System'
+import DataExplorer from './views/DataExplorer'
 
 const REFRESH_INTERVAL_MS = 30_000
 
@@ -14,6 +15,7 @@ const VIEW_TITLES: Record<string, string> = {
   '/accuracy': 'Historical Accuracy',
   '/models': 'Model Health',
   '/system': 'System Health',
+  '/data': 'Data Explorer',
 }
 
 export const RefreshContext = createContext<{
@@ -55,6 +57,7 @@ function Sidebar({ slot }: { slot: string }) {
     { to: '/accuracy', label: '📊 Accuracy' },
     { to: '/models', label: '🧠 Models' },
     { to: '/system', label: '💚 System' },
+    { to: '/data', label: '🔍 Data' },
   ]
   return (
     <aside className={styles.sidebar}>
@@ -112,6 +115,7 @@ export default function App() {
                 <Route path="/accuracy" element={<Accuracy intervalMs={REFRESH_INTERVAL_MS} />} />
                 <Route path="/models" element={<Models intervalMs={REFRESH_INTERVAL_MS} />} />
                 <Route path="/system" element={<System intervalMs={REFRESH_INTERVAL_MS} />} />
+                <Route path="/data" element={<DataExplorer />} />
               </Routes>
             </div>
           </div>
