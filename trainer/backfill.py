@@ -6,23 +6,13 @@ from shared.orm import Prediction, RawFeature
 logger = logging.getLogger(__name__)
 
 
-def _strip_tz(ts: datetime) -> datetime:
-    """Return a naive UTC datetime — SQLite stores datetimes without tzinfo,
-    so comparisons require the filter value to also be naive."""
-    if ts is None:
-        return ts
-    if getattr(ts, "tzinfo", None) is not None:
-        return ts.replace(tzinfo=None)
-    return ts
-
-
 def backfill_outcomes(session: Session) -> int:
-    now = _strip_tz(datetime.now(timezone.utc))
+    now = datetime.now(timezone.utc)
     unsettled = (
         session.query(Prediction)
         .filter(
             Prediction.settled_at <= now,
-            Prediction.actual_outcome == None,
+            Prediction.actual_outcome == None,  # noqa: E711
         )
         .all()
     )
@@ -36,7 +26,7 @@ def backfill_outcomes(session: Session) -> int:
                 pred.market_id, pred.ts,
             )
             continue
-        # Flat price (==) treated as DOWN (0); rare in practice and consistent with binary label convention
+        # Flat price (==) treated as DOWN (0); rare in practice
         pred.actual_outcome = 1 if price_at_settle > price_at_pred else 0
         updated += 1
     session.flush()
@@ -45,18 +35,17 @@ def backfill_outcomes(session: Session) -> int:
 
 
 def _price_at(session: Session, market_id: str, ts: datetime, direction: str) -> float | None:
-    ts_naive = _strip_tz(ts)
     if direction == "before":
         row = (
             session.query(RawFeature)
-            .filter(RawFeature.market_id == market_id, RawFeature.ts <= ts_naive)
+            .filter(RawFeature.market_id == market_id, RawFeature.ts <= ts)
             .order_by(RawFeature.ts.desc())
             .first()
         )
     else:
         row = (
             session.query(RawFeature)
-            .filter(RawFeature.market_id == market_id, RawFeature.ts >= ts_naive)
+            .filter(RawFeature.market_id == market_id, RawFeature.ts >= ts)
             .order_by(RawFeature.ts.asc())
             .first()
         )
