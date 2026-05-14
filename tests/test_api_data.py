@@ -198,3 +198,72 @@ def test_correlations_returns_empty_when_insufficient_data(db_session):
     resp = client.get("/data/correlations?series_ticker=KXBTCUSD")
     assert resp.status_code == 200
     assert resp.json() == []
+
+
+def test_feature_importance_returns_sorted_list(db_session):
+    import numpy as np
+    from unittest.mock import patch, MagicMock
+    from shared.feature_builder import FEATURE_NAMES
+
+    now = datetime.now(timezone.utc)
+    # Sentinel market row needed for ModelRegistry FK
+    sentinel = Market(
+        market_id="KXBTCUSD", ticker="KXBTCUSD", status="series",
+        discovered_at=now, updated_at=now,
+    )
+    db_session.add(sentinel)
+    db_session.flush()
+    reg = ModelRegistry(
+        market_id="KXBTCUSD", version="v1",
+        trained_at=now, training_rows=200, brier_score=0.21,
+        artifact_path="/app/models/KXBTCUSD_v1.joblib",
+        is_active=True,
+    )
+    db_session.add(reg)
+    db_session.flush()
+
+    mock_model = MagicMock()
+    mock_model.feature_importances_ = np.linspace(0.01, 0.10, len(FEATURE_NAMES))
+
+    client = _make_app(db_session)
+    with patch("joblib.load", return_value=mock_model):
+        resp = client.get("/data/feature-importance?series_ticker=KXBTCUSD")
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert len(body) == 25
+    assert body[0]["feature"] == FEATURE_NAMES[-1]  # linspace: last = highest
+    importances = [row["importance"] for row in body]
+    assert importances == sorted(importances, reverse=True)
+
+
+def test_feature_importance_404_when_no_active_model(db_session):
+    client = _make_app(db_session)
+    resp = client.get("/data/feature-importance?series_ticker=DOESNOTEXIST")
+    assert resp.status_code == 404
+
+
+def test_feature_importance_404_when_artifact_missing(db_session):
+    import numpy as np
+    from unittest.mock import patch
+
+    now = datetime.now(timezone.utc)
+    sentinel = Market(
+        market_id="KXBTCUSD", ticker="KXBTCUSD", status="series",
+        discovered_at=now, updated_at=now,
+    )
+    db_session.add(sentinel)
+    db_session.flush()
+    reg = ModelRegistry(
+        market_id="KXBTCUSD", version="v2",
+        trained_at=now, training_rows=100, brier_score=0.25,
+        artifact_path="/nonexistent/path.joblib",
+        is_active=True,
+    )
+    db_session.add(reg)
+    db_session.flush()
+
+    client = _make_app(db_session)
+    with patch("joblib.load", side_effect=FileNotFoundError("not found")):
+        resp = client.get("/data/feature-importance?series_ticker=KXBTCUSD")
+    assert resp.status_code == 404

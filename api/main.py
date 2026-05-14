@@ -482,6 +482,37 @@ def create_app(session_factory_fn: Callable = None) -> FastAPI:
             results.append({"feature": name, "r": round(r, 4)})
         return sorted(results, key=lambda x: abs(x["r"]), reverse=True)
 
+    @app.get("/data/feature-importance")
+    def get_feature_importance(
+        series_ticker: str,
+        session: Session = Depends(_get_db),
+    ):
+        import joblib
+        from shared.feature_builder import FEATURE_NAMES
+        from shared.orm import ModelRegistry
+
+        registry = (
+            session.query(ModelRegistry)
+            .filter(
+                ModelRegistry.market_id == series_ticker,
+                ModelRegistry.is_active == True,  # noqa: E712
+            )
+            .first()
+        )
+        if registry is None:
+            raise HTTPException(status_code=404, detail="No active model for this series ticker")
+
+        try:
+            model = joblib.load(registry.artifact_path)
+        except (FileNotFoundError, OSError) as exc:
+            raise HTTPException(status_code=404, detail=f"Model artifact not found: {exc}")
+
+        result = [
+            {"feature": name, "importance": round(float(imp), 6)}
+            for name, imp in zip(FEATURE_NAMES, model.feature_importances_)
+        ]
+        return sorted(result, key=lambda x: x["importance"], reverse=True)
+
     @app.get("/stats/training")
     def get_stats_training(session: Session = Depends(_get_db)):
         from shared.orm import ModelRegistry
