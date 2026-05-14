@@ -1,0 +1,23 @@
+.confBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.confTrack {
+  width: 80px;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.confFill {
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+}
+
+.up { color: var(--green); font-weight: 700; }
+.down { color: var(--red); font-weight: 700; }
+.muted { color: var(--text-muted); }
