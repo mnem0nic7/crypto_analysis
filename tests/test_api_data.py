@@ -88,3 +88,58 @@ def test_raw_features_rejects_invalid_sort_by(db_session):
     client = _make_app(db_session)
     resp = client.get("/data/raw-features?series_ticker=KXBTCUSD&sort_by=DROP+TABLE")
     assert resp.status_code == 400
+
+
+def _seed_settled_prediction(session, market_id, ts, outcome=1):
+    p = Prediction(
+        market_id=market_id, ts=ts,
+        direction="UP" if outcome == 1 else "DOWN",
+        confidence=0.72, low_confidence=False, model_version="v1",
+        settled_at=ts + timedelta(minutes=10),
+        actual_outcome=outcome,
+    )
+    session.add(p)
+    session.flush()
+    return p
+
+
+def test_feature_vectors_returns_rows(db_session):
+    now = datetime.now(timezone.utc)
+    _seed_market(db_session, "KXBTCUSD-FV1", "KXBTCUSD")
+    _seed_raw_features(db_session, "KXBTCUSD-FV1", n=15)
+    pred_ts = now - timedelta(seconds=30)
+    _seed_settled_prediction(db_session, "KXBTCUSD-FV1", pred_ts)
+    client = _make_app(db_session)
+    resp = client.get("/data/feature-vectors?series_ticker=KXBTCUSD")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 1
+    assert len(body["rows"]) == 1
+    row = body["rows"][0]
+    assert row["actual_outcome"] == 1
+    assert "features" in row
+    assert "price_momentum_1m" in row["features"]
+    assert len(row["features"]) == 25
+
+
+def test_feature_vectors_skips_rows_with_insufficient_context(db_session):
+    now = datetime.now(timezone.utc)
+    _seed_market(db_session, "KXBTCUSD-FV2", "KXBTCUSD")
+    # Only 3 raw rows — below _MIN_ROWS=10, so feature vector can't be built
+    _seed_raw_features(db_session, "KXBTCUSD-FV2", n=3)
+    pred_ts = now - timedelta(seconds=30)
+    _seed_settled_prediction(db_session, "KXBTCUSD-FV2", pred_ts)
+    client = _make_app(db_session)
+    resp = client.get("/data/feature-vectors?series_ticker=KXBTCUSD")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total"] == 1
+    assert len(body["rows"]) == 0
+    assert body["skipped"] == 1
+
+
+def test_feature_vectors_page_size_capped_at_50(db_session):
+    client = _make_app(db_session)
+    resp = client.get("/data/feature-vectors?series_ticker=KXBTCUSD&page_size=200")
+    assert resp.status_code == 200
+    assert resp.json()["page_size"] == 50

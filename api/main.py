@@ -312,6 +312,77 @@ def create_app(session_factory_fn: Callable = None) -> FastAPI:
             "page_size": page_size,
         }
 
+    @app.get("/data/feature-vectors")
+    def get_feature_vectors(
+        series_ticker: str,
+        from_ts: datetime | None = None,
+        to_ts: datetime | None = None,
+        page: int = 1,
+        page_size: int = 50,
+        sort_by: str = "ts",
+        sort_dir: str = "desc",
+        session: Session = Depends(_get_db),
+    ):
+        from shared.feature_builder import build_feature_vector, FEATURE_NAMES
+        from shared.orm import RawFeature as RF
+
+        page_size = min(page_size, 50)
+        _FV_SORTABLE = {"ts", "confidence", "actual_outcome"}
+        if sort_by not in _FV_SORTABLE:
+            raise HTTPException(status_code=400, detail=f"sort_by must be one of {sorted(_FV_SORTABLE)}")
+        if sort_dir not in ("asc", "desc"):
+            raise HTTPException(status_code=400, detail="sort_dir must be 'asc' or 'desc'")
+
+        q = (
+            session.query(Prediction)
+            .join(Market, Prediction.market_id == Market.market_id)
+            .filter(Market.ticker == series_ticker, Prediction.actual_outcome != None)  # noqa: E711
+        )
+        if from_ts:
+            q = q.filter(Prediction.ts >= from_ts)
+        if to_ts:
+            q = q.filter(Prediction.ts <= to_ts)
+
+        total = q.count()
+        col = getattr(Prediction, sort_by)
+        preds = (
+            q.order_by(col.desc() if sort_dir == "desc" else col.asc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+            .all()
+        )
+
+        rows = []
+        skipped = 0
+        for pred in preds:
+            pred_ts = pred.ts if pred.ts.tzinfo else pred.ts.replace(tzinfo=timezone.utc)
+            context = (
+                session.query(RF)
+                .filter(RF.market_id == pred.market_id, RF.ts <= pred_ts)
+                .order_by(RF.ts.desc())
+                .limit(40)
+                .all()
+            )
+            market = session.get(Market, pred.market_id)
+            minutes_to_close = 7.5
+            if market and market.close_time:
+                ct = market.close_time if market.close_time.tzinfo else market.close_time.replace(tzinfo=timezone.utc)
+                minutes_to_close = max(0.0, (ct - pred_ts).total_seconds() / 60)
+            result = build_feature_vector(context, minutes_to_close=minutes_to_close, ts=pred_ts)
+            if result is None:
+                skipped += 1
+                continue
+            vec, _ = result
+            rows.append({
+                "ts": pred.ts.isoformat(),
+                "direction": pred.direction,
+                "confidence": float(pred.confidence),
+                "actual_outcome": int(pred.actual_outcome),
+                "features": {name: float(val) for name, val in zip(FEATURE_NAMES, vec)},
+            })
+
+        return {"rows": rows, "total": total, "page": page, "page_size": page_size, "skipped": skipped}
+
     @app.get("/stats/training")
     def get_stats_training(session: Session = Depends(_get_db)):
         from shared.orm import ModelRegistry
