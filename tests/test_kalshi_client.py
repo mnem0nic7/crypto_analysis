@@ -26,19 +26,21 @@ def test_get_markets_filters_crypto():
     mock_response = MagicMock()
     mock_response.json.return_value = {
         "markets": [
-            {"ticker": "KXBTCUSD-001", "series_ticker": "KXBTCUSD", "status": "open",
-             "close_time": "2026-05-14T18:15:00Z", "yes_bid": 0.55, "yes_ask": 0.57,
-             "volume": 1200, "category": "crypto"},
-            {"ticker": "WEATHER-001", "series_ticker": "WXTEMP", "status": "open",
-             "close_time": "2026-05-14T18:15:00Z", "yes_bid": 0.30, "yes_ask": 0.32,
-             "volume": 400, "category": "weather"},
+            {"ticker": "KXBTC15M-26MAY141715-15", "series_ticker": "KXBTC15M",
+             "status": "open", "close_time": "2026-05-14T18:15:00Z",
+             "yes_bid_dollars": "0.55", "yes_ask_dollars": "0.57",
+             "volume_fp": "1200"},
         ]
     }
     mock_response.raise_for_status = MagicMock()
     with patch.object(client._http, "get", return_value=mock_response):
         markets = client.get_crypto_markets()
-    assert len(markets) == 1
-    assert markets[0]["ticker"] == "KXBTCUSD-001"
+    # 7 series × 1 market each = 7 total; each market gets series_ticker injected
+    assert len(markets) == 7
+    assert markets[0]["series_ticker"] in [
+        "KXBTC15M", "KXETH15M", "KXSOL15M", "KXXRP15M",
+        "KXDOGE15M", "KXBNB15M", "KXHYPE15M",
+    ]
 
 
 def test_get_market_price_returns_midpoint():
@@ -50,17 +52,17 @@ def test_get_market_price_returns_midpoint():
     mock_response = MagicMock()
     mock_response.json.return_value = {
         "market": {
-            "ticker": "KXBTCUSD-001",
-            "yes_bid": 0.54,
-            "yes_ask": 0.58,
-            "no_bid": 0.42,
-            "no_ask": 0.46,
-            "volume": 1500,
+            "ticker": "KXBTC15M-26MAY141715-15",
+            "yes_bid_dollars": "0.54",
+            "yes_ask_dollars": "0.58",
+            "no_bid_dollars": "0.42",
+            "no_ask_dollars": "0.46",
+            "volume_fp": "1500.0",
         }
     }
     mock_response.raise_for_status = MagicMock()
     with patch.object(client._http, "get", return_value=mock_response):
-        price = client.get_market_price("KXBTCUSD-001")
+        price = client.get_market_price("KXBTC15M-26MAY141715-15")
     assert price["yes_price"] == pytest.approx(0.56, abs=0.01)
     assert price["no_price"] == pytest.approx(0.44, abs=0.01)
-    assert price["volume"] == 1500
+    assert price["volume"] == pytest.approx(1500.0)

@@ -44,13 +44,22 @@ class CoinbaseClient:
             headers={"kid": self._key_name, "nonce": secrets.token_hex(16)},
         )
 
-    def get_candles(self, product_id: str, granularity: str = "ONE_MINUTE", limit: int = 40) -> list[dict]:
+    def get_candles(
+        self, product_id: str, granularity: str = "ONE_MINUTE",
+        limit: int = 40, start: int | None = None, end: int | None = None,
+    ) -> list[dict]:
         path = f"/api/v3/brokerage/products/{product_id}/candles"
         token = self._make_jwt("GET", path)
+        params: dict = {"granularity": granularity}
+        if start is not None and end is not None:
+            params["start"] = str(start)
+            params["end"] = str(end)
+        else:
+            params["limit"] = limit
         resp = self._http.get(
             self.BASE_URL + path,
             headers={"Authorization": f"Bearer {token}"},
-            params={"granularity": granularity, "limit": limit},
+            params=params,
         )
         resp.raise_for_status()
         return [
