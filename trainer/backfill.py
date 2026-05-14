@@ -30,7 +30,8 @@ def backfill_outcomes(session: Session) -> int:
         pred.actual_outcome = 1 if price_at_settle > price_at_pred else 0
         updated += 1
     session.flush()
-    logger.info("Backfilled %d predictions", updated)
+    if updated:
+        logger.info("Backfilled %d predictions", updated)
     return updated
 
 

@@ -71,9 +71,12 @@ def _mark_stale(session):
 def _ingest_loop():
     while True:
         with session_scope(session_factory) as session:
-            backfilled = backfill_outcomes(session)
-            if backfilled:
-                logger.info("Settled %d outcomes", backfilled)
+            try:
+                backfilled = backfill_outcomes(session)
+                if backfilled:
+                    logger.info("Settled %d outcomes", backfilled)
+            except Exception as exc:
+                logger.error("Outcome backfill failed: %s", exc)
             if time.time() - _last_discovery > _DISCOVERY_INTERVAL:
                 _run_discovery(session)
             _mark_stale(session)
