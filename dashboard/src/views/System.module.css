@@ -1,0 +1,48 @@
+.cards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.serviceCard {
+  background: var(--bg-card);
+  border-radius: 6px;
+  padding: 20px;
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.dot-green { background: var(--green); }
+.dot-red   { background: var(--red); }
+
+.cardTitle {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.cardRow {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 3px 0;
+}
+
+.deployCard {
+  background: var(--bg-card);
+  border-radius: 6px;
+  padding: 20px;
+  grid-column: span 3;
+}
