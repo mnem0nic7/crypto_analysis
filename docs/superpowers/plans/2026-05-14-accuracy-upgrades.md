@@ -318,7 +318,6 @@ export default function Accuracy({ intervalMs }: { intervalMs: number }) {
   const [avgBrier, setAvgBrier] = useState<number | null>(null)
   const [barData, setBarData] = useState<MarketBar[]>([])
   const [allHistory, setAllHistory] = useState<HistoryEntry[]>([])
-  const [historyByTicker, setHistoryByTicker] = useState<Map<string, HistoryEntry[]>>(new Map())
   const [rollingWindow, setRollingWindow] = useState<'24h' | '7d'>('24h')
   const [rollingData, setRollingData] = useState<RollingPoint[]>([])
   const [calibData, setCalibData] = useState<CalibPoint[]>([])
@@ -357,7 +356,6 @@ export default function Accuracy({ intervalMs }: { intervalMs: number }) {
       })
 
       setAllHistory(all)
-      setHistoryByTicker(byTicker)
       setCalibData(buildCalibration(all))
       setDirData(buildDirectional(byTicker))
       setFetchError(null)
