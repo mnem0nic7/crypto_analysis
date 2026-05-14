@@ -1,0 +1,100 @@
+# docker-compose.blue.yml — Blue slot. Ports: dashboard 3001, api 8011, ingestor 8021, predictor 8031.
+# Requires infra stack running first: docker compose -f docker-compose.infra.yml up -d
+version: "3.9"
+
+x-slot: &slot
+  DEPLOY_SLOT: blue
+
+services:
+  migrate-blue:
+    build:
+      context: .
+      dockerfile: ingestor/Dockerfile
+    # pg_isready loop because postgres is in a separate compose project;
+    # depends_on condition: service_healthy only works within the same project.
+    command: sh -c "until pg_isready -h postgres -U postgres; do sleep 2; done && alembic upgrade head"
+    container_name: blue-migrate
+    environment:
+      <<: *slot
+      POSTGRES_HOST: postgres
+    env_file: .env
+    networks:
+      - infra
+
+  ingestor-blue:
+    build:
+      context: .
+      dockerfile: ingestor/Dockerfile
+    container_name: blue-ingestor
+    environment:
+      <<: *slot
+      POSTGRES_HOST: postgres
+    env_file: .env
+    depends_on:
+      migrate-blue:
+        condition: service_completed_successfully
+    volumes:
+      - ./Kalshi-1.txt:/app/Kalshi-1.txt:ro
+      - ./Kalshi-2-Demo.txt:/app/Kalshi-2-Demo.txt:ro
+    ports:
+      - "8021:8001"
+    networks:
+      - infra
+
+  predictor-blue:
+    build:
+      context: .
+      dockerfile: predictor/Dockerfile
+    container_name: blue-predictor
+    environment:
+      <<: *slot
+      POSTGRES_HOST: postgres
+    env_file: .env
+    depends_on:
+      migrate-blue:
+        condition: service_completed_successfully
+    volumes:
+      - models:/app/models
+    ports:
+      - "8031:8002"
+    networks:
+      - infra
+
+  api-blue:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    container_name: blue-api
+    environment:
+      <<: *slot
+      POSTGRES_HOST: postgres
+    env_file: .env
+    depends_on:
+      migrate-blue:
+        condition: service_completed_successfully
+    ports:
+      - "8011:8000"
+    networks:
+      - infra
+
+  dashboard-blue:
+    build:
+      context: .
+      dockerfile: dashboard/Dockerfile
+    container_name: blue-dashboard
+    depends_on:
+      - api-blue
+    ports:
+      - "3001:80"
+    networks:
+      - infra
+
+volumes:
+  models:
+    external: true
+    name: crypto_analysis_models
+
+networks:
+  infra:
+    external: true
+    name: crypto_analysis_infra

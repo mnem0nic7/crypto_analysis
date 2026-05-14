@@ -1,0 +1,98 @@
+# docker-compose.green.yml — Green slot. Ports: dashboard 3002, api 8012, ingestor 8022, predictor 8032.
+# Requires infra stack running first: docker compose -f docker-compose.infra.yml up -d
+version: "3.9"
+
+x-slot: &slot
+  DEPLOY_SLOT: green
+
+services:
+  migrate-green:
+    build:
+      context: .
+      dockerfile: ingestor/Dockerfile
+    command: sh -c "until pg_isready -h postgres -U postgres; do sleep 2; done && alembic upgrade head"
+    container_name: green-migrate
+    environment:
+      <<: *slot
+      POSTGRES_HOST: postgres
+    env_file: .env
+    networks:
+      - infra
+
+  ingestor-green:
+    build:
+      context: .
+      dockerfile: ingestor/Dockerfile
+    container_name: green-ingestor
+    environment:
+      <<: *slot
+      POSTGRES_HOST: postgres
+    env_file: .env
+    depends_on:
+      migrate-green:
+        condition: service_completed_successfully
+    volumes:
+      - ./Kalshi-1.txt:/app/Kalshi-1.txt:ro
+      - ./Kalshi-2-Demo.txt:/app/Kalshi-2-Demo.txt:ro
+    ports:
+      - "8022:8001"
+    networks:
+      - infra
+
+  predictor-green:
+    build:
+      context: .
+      dockerfile: predictor/Dockerfile
+    container_name: green-predictor
+    environment:
+      <<: *slot
+      POSTGRES_HOST: postgres
+    env_file: .env
+    depends_on:
+      migrate-green:
+        condition: service_completed_successfully
+    volumes:
+      - models:/app/models
+    ports:
+      - "8032:8002"
+    networks:
+      - infra
+
+  api-green:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    container_name: green-api
+    environment:
+      <<: *slot
+      POSTGRES_HOST: postgres
+    env_file: .env
+    depends_on:
+      migrate-green:
+        condition: service_completed_successfully
+    ports:
+      - "8012:8000"
+    networks:
+      - infra
+
+  dashboard-green:
+    build:
+      context: .
+      dockerfile: dashboard/Dockerfile
+    container_name: green-dashboard
+    depends_on:
+      - api-green
+    ports:
+      - "3002:80"
+    networks:
+      - infra
+
+volumes:
+  models:
+    external: true
+    name: crypto_analysis_models
+
+networks:
+  infra:
+    external: true
+    name: crypto_analysis_infra
