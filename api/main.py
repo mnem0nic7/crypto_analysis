@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from typing import Callable
 from fastapi import FastAPI, HTTPException, Depends
 from sqlalchemy.orm import Session
-from shared.orm import Market, Prediction
+from shared.orm import Market, Prediction, RawFeature
 
 
 def create_app(session_factory_fn: Callable = None) -> FastAPI:
@@ -240,6 +240,77 @@ def create_app(session_factory_fn: Callable = None) -> FastAPI:
     @app.get("/slot")
     def get_slot():
         return {"slot": os.environ.get("DEPLOY_SLOT", "blue")}
+
+    _RAW_SORTABLE = {
+        "ts", "price_open", "price_high", "price_low", "price_close",
+        "volume", "bid_depth_1pct", "ask_depth_1pct", "book_imbalance",
+        "kalshi_yes_price", "kalshi_no_price", "kalshi_volume",
+        "price_momentum_1m", "price_momentum_5m", "price_momentum_15m",
+        "volatility_5m",
+    }
+
+    @app.get("/data/raw-features")
+    def get_raw_features(
+        series_ticker: str,
+        from_ts: datetime | None = None,
+        to_ts: datetime | None = None,
+        page: int = 1,
+        page_size: int = 100,
+        sort_by: str = "ts",
+        sort_dir: str = "desc",
+        session: Session = Depends(_get_db),
+    ):
+        if sort_by not in _RAW_SORTABLE:
+            raise HTTPException(status_code=400, detail=f"sort_by must be one of {sorted(_RAW_SORTABLE)}")
+        if sort_dir not in ("asc", "desc"):
+            raise HTTPException(status_code=400, detail="sort_dir must be 'asc' or 'desc'")
+
+        q = (
+            session.query(RawFeature)
+            .join(Market, RawFeature.market_id == Market.market_id)
+            .filter(Market.ticker == series_ticker)
+        )
+        if from_ts:
+            q = q.filter(RawFeature.ts >= from_ts)
+        if to_ts:
+            q = q.filter(RawFeature.ts <= to_ts)
+
+        total = q.count()
+        col = getattr(RawFeature, sort_by)
+        rows = (
+            q.order_by(col.desc() if sort_dir == "desc" else col.asc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+            .all()
+        )
+
+        def _f(v):
+            return float(v) if v is not None else None
+
+        return {
+            "rows": [
+                {
+                    "id": r.id, "ts": r.ts.isoformat(), "market_id": r.market_id,
+                    "price_open": _f(r.price_open), "price_high": _f(r.price_high),
+                    "price_low": _f(r.price_low), "price_close": _f(r.price_close),
+                    "volume": _f(r.volume),
+                    "bid_depth_1pct": _f(r.bid_depth_1pct),
+                    "ask_depth_1pct": _f(r.ask_depth_1pct),
+                    "book_imbalance": _f(r.book_imbalance),
+                    "kalshi_yes_price": _f(r.kalshi_yes_price),
+                    "kalshi_no_price": _f(r.kalshi_no_price),
+                    "kalshi_volume": _f(r.kalshi_volume),
+                    "price_momentum_1m": _f(r.price_momentum_1m),
+                    "price_momentum_5m": _f(r.price_momentum_5m),
+                    "price_momentum_15m": _f(r.price_momentum_15m),
+                    "volatility_5m": _f(r.volatility_5m),
+                }
+                for r in rows
+            ],
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+        }
 
     @app.get("/stats/training")
     def get_stats_training(session: Session = Depends(_get_db)):
