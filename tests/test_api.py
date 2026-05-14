@@ -86,3 +86,117 @@ def test_health_endpoint(db_session):
     resp = client.get("/health")
     assert resp.status_code == 200
     assert resp.json()["status"] == "ok"
+
+
+def test_stats_summary_no_data(db_session):
+    client = _make_test_app(db_session)
+    resp = client.get("/stats/summary")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total_settled"] == 0
+    assert body["overall_accuracy"] == 0.0
+    assert body["high_conf_accuracy"] == 0.0
+    assert body["markets"] == []
+
+
+def test_stats_summary_aggregates_correctly(db_session):
+    from datetime import datetime, timezone, timedelta
+    from shared.orm import Market, Prediction
+    m = Market(
+        market_id="KXBTCUSD-S1", ticker="BTC", status="active",
+        close_time=datetime.now(timezone.utc) + timedelta(minutes=7),
+        discovered_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    db_session.add(m)
+    db_session.flush()
+    # 2 correct UP predictions, 1 wrong DOWN (actual_outcome=1 but direction=DOWN)
+    for direction, actual, conf in [("UP", 1, 0.73), ("UP", 1, 0.70), ("DOWN", 1, 0.68)]:
+        p = Prediction(
+            market_id="KXBTCUSD-S1", ts=datetime.now(timezone.utc),
+            direction=direction, confidence=conf,
+            low_confidence=False, model_version="v1",
+            settled_at=datetime.now(timezone.utc) - timedelta(minutes=1),
+            actual_outcome=actual,
+        )
+        db_session.add(p)
+    db_session.flush()
+    client = _make_test_app(db_session)
+    resp = client.get("/stats/summary")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total_settled"] == 3
+    assert abs(body["overall_accuracy"] - 2/3) < 0.01
+    # high_conf_accuracy: all 3 have conf >= 0.65, 2 correct
+    assert abs(body["high_conf_accuracy"] - 2/3) < 0.01
+    assert len(body["markets"]) == 1
+    assert body["markets"][0]["ticker"] == "BTC"
+
+
+def test_stats_models_returns_active(db_session):
+    from datetime import datetime, timezone, timedelta
+    from shared.orm import Market, ModelRegistry
+    m = Market(
+        market_id="KXBTCUSD-MR1", ticker="BTC", status="active",
+        close_time=datetime.now(timezone.utc) + timedelta(minutes=7),
+        discovered_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    db_session.add(m)
+    db_session.flush()
+    reg = ModelRegistry(
+        market_id="KXBTCUSD-MR1", version="v4",
+        trained_at=datetime.now(timezone.utc),
+        training_rows=842, brier_score=0.19,
+        artifact_path="/app/models/KXBTCUSD-MR1_v4.ubj",
+        is_active=True,
+    )
+    db_session.add(reg)
+    db_session.flush()
+    client = _make_test_app(db_session)
+    resp = client.get("/stats/models")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 1
+    assert data[0]["ticker"] == "BTC"
+    assert data[0]["version"] == "v4"
+    assert abs(data[0]["brier_score"] - 0.19) < 0.001
+    assert data[0]["is_active"] is True
+
+
+def test_stats_models_excludes_inactive(db_session):
+    from datetime import datetime, timezone, timedelta
+    from shared.orm import Market, ModelRegistry
+    m = Market(
+        market_id="KXBTCUSD-MR2", ticker="BTC", status="active",
+        close_time=datetime.now(timezone.utc) + timedelta(minutes=7),
+        discovered_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    db_session.add(m)
+    db_session.flush()
+    reg = ModelRegistry(
+        market_id="KXBTCUSD-MR2", version="v3",
+        trained_at=datetime.now(timezone.utc),
+        training_rows=500, brier_score=0.25,
+        artifact_path="/app/models/KXBTCUSD-MR2_v3.ubj",
+        is_active=False,
+    )
+    db_session.add(reg)
+    db_session.flush()
+    client = _make_test_app(db_session)
+    resp = client.get("/stats/models")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+def test_slot_defaults_to_blue():
+    import os
+    os.environ.pop("DEPLOY_SLOT", None)
+    from fastapi.testclient import TestClient
+    import api.main as api_module
+    app = api_module.create_app(lambda: None)
+    client = TestClient(app)
+    resp = client.get("/slot")
+    assert resp.status_code == 200
+    assert resp.json()["slot"] == "blue"
