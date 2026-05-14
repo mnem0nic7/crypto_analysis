@@ -102,3 +102,81 @@ def test_train_does_not_promote_when_worse(db_session, tmp_path):
         models_dir=str(tmp_path),
     )
     assert result["promoted"] is False
+
+
+from trainer.backfill import backfill_outcomes
+
+
+def test_backfill_sets_actual_outcome(db_session):
+    market_id = "KXBTCUSD-BF"
+    market = Market(
+        market_id=market_id, ticker="KXBTCUSD", status="active",
+        close_time=datetime.now(timezone.utc) + timedelta(hours=1),
+        discovered_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    db_session.add(market)
+    db_session.flush()
+
+    ts_pred = datetime.now(timezone.utc) - timedelta(minutes=20)
+    ts_settle = ts_pred + timedelta(minutes=15)
+
+    # Raw feature at prediction time — price 60000
+    rf_at_pred = RawFeature()
+    rf_at_pred.market_id = market_id
+    rf_at_pred.ts = ts_pred
+    rf_at_pred.price_close = 60000
+    db_session.add(rf_at_pred)
+
+    # Raw feature at settlement time — price 61000 (UP)
+    rf_at_settle = RawFeature()
+    rf_at_settle.market_id = market_id
+    rf_at_settle.ts = ts_settle
+    rf_at_settle.price_close = 61000
+    db_session.add(rf_at_settle)
+    db_session.flush()
+
+    pred = Prediction(
+        market_id=market_id,
+        ts=ts_pred,
+        direction="UP",
+        confidence=0.65,
+        low_confidence=False,
+        model_version="v1",
+        feature_snapshot_id=rf_at_pred.id,
+        settled_at=ts_settle,
+        actual_outcome=None,
+    )
+    db_session.add(pred)
+    db_session.flush()
+
+    count = backfill_outcomes(db_session)
+    assert count == 1
+    db_session.expire(pred)
+    assert pred.actual_outcome == 1   # price went up
+
+
+def test_backfill_skips_already_settled(db_session):
+    market_id = "KXBTCUSD-SK"
+    market = Market(
+        market_id=market_id, ticker="KXBTCUSD", status="active",
+        close_time=datetime.now(timezone.utc) + timedelta(hours=1),
+        discovered_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    db_session.add(market)
+    ts_pred = datetime.now(timezone.utc) - timedelta(minutes=20)
+    pred = Prediction(
+        market_id=market_id,
+        ts=ts_pred,
+        direction="DOWN",
+        confidence=0.6,
+        low_confidence=False,
+        model_version="v1",
+        settled_at=ts_pred + timedelta(minutes=15),
+        actual_outcome=0,  # already set
+    )
+    db_session.add(pred)
+    db_session.flush()
+    count = backfill_outcomes(db_session)
+    assert count == 0

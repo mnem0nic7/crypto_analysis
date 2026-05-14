@@ -1,9 +1,9 @@
-# trainer/main.py
 import logging
 import time
 from shared.db import make_session_factory, session_scope
 from shared.orm import Market
 from shared.settings import Settings
+from trainer.backfill import backfill_outcomes
 from trainer.train import train_and_promote
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -14,6 +14,11 @@ def run_training_campaign(settings: Settings, session_factory) -> None:
     if not settings.training_campaign_enabled:
         logger.info("TRAINING_CAMPAIGN_ENABLED=false — exiting")
         return
+
+    # Backfill outcomes first so training data is fresh
+    with session_scope(session_factory) as session:
+        backfilled = backfill_outcomes(session)
+        logger.info("Backfilled %d outcomes before training", backfilled)
 
     with session_scope(session_factory) as session:
         markets = session.query(Market).filter(Market.status == "active").all()
