@@ -92,7 +92,13 @@ def test_process_one_market_skips_when_too_few_candles(db_session):
     from ingestor.historical_backfill import _process_one_market
     close_time = datetime.now(timezone.utc) - timedelta(hours=6)
     market_dict = _make_kalshi_market("KXBTC15M-TEST-04", "KXBTC15M", close_time)
-    sparse_cache = _build_candle_cache(close_time, n=3)  # fewer than _MIN_CANDLES=10
+
+    # pred_ts = open_time + 7m30s = (close_time - 15m) + 7m30s = close_time - 7m30s
+    # window is [pred_ts - 40min, pred_ts); anchor 3 candles inside that window
+    open_time = close_time - timedelta(minutes=15)
+    pred_ts = open_time + timedelta(minutes=7, seconds=30)
+    base_unix = int((pred_ts - timedelta(minutes=5)).timestamp())
+    sparse_cache = {base_unix - i * 60: _make_candle(base_unix - i * 60) for i in range(3)}
 
     result = _process_one_market(db_session, market_dict, "KXBTC15M", sparse_cache)
     assert result == 0

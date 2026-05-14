@@ -147,8 +147,8 @@ def build_feature_vector(
     kalshi_vol_mom = (kv_5m - kv_mean) / kv_mean if kv_mean > 0 else 0.0
 
     # Time features (cyclical encoding)
-    hour = ts.hour
-    dow = ts.weekday()
+    hour = now.hour
+    dow = now.weekday()
     sin_hour = math.sin(2 * math.pi * hour / 24)
     cos_hour = math.cos(2 * math.pi * hour / 24)
     sin_dow = math.sin(2 * math.pi * dow / 7)

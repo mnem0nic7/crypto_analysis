@@ -137,7 +137,7 @@ def _process_one_market(session: Session, market_dict: dict, series_ticker: str,
     candle_rows = [
         (datetime.fromtimestamp(unix_ts, tz=timezone.utc), candle)
         for unix_ts, candle in sorted(candle_cache.items())
-        if window_start <= datetime.fromtimestamp(unix_ts, tz=timezone.utc) <= pred_ts
+        if window_start <= datetime.fromtimestamp(unix_ts, tz=timezone.utc) < pred_ts
     ]
 
     if len(candle_rows) < _MIN_CANDLES:
