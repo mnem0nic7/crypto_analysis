@@ -1,0 +1,81 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: crypto_analysis
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    build:
+      context: .
+      dockerfile: ingestor/Dockerfile
+    command: >
+      sh -c "
+        POSTGRES_HOST=postgres
+        alembic upgrade head
+      "
+    environment:
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_HOST=postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  ingestor:
+    build:
+      context: .
+      dockerfile: ingestor/Dockerfile
+    environment:
+      - POSTGRES_HOST=postgres
+    env_file: .env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - ./Kalshi-1.txt:/app/Kalshi-1.txt:ro
+      - ./Kalshi-2-Demo.txt:/app/Kalshi-2-Demo.txt:ro
+    ports:
+      - "8001:8001"
+
+  predictor:
+    build:
+      context: .
+      dockerfile: predictor/Dockerfile
+    environment:
+      - POSTGRES_HOST=postgres
+    env_file: .env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - models:/app/models
+    ports:
+      - "8002:8002"
+
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    environment:
+      - POSTGRES_HOST=postgres
+    env_file: .env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "8000:8000"
+
+volumes:
+  pgdata:
+  models:
