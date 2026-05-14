@@ -1,4 +1,5 @@
 # shared/settings.py
+from typing import Literal
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,7 +12,7 @@ class Settings(BaseSettings):
     demo_kalshi_write_private_key_path: str
     live_kalshi_api_key: str
     live_kalshi_read_private_key_path: str
-    kalshi_env: str = "demo"  # "demo" | "live"
+    kalshi_env: Literal["demo", "live"] = "demo"
 
     # Postgres
     postgres_password: str
