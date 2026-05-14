@@ -41,6 +41,23 @@ services:
     networks:
       - infra
 
+  trainer-blue:
+    build:
+      context: .
+      dockerfile: trainer/Dockerfile
+    container_name: blue-trainer
+    environment:
+      <<: *slot
+      POSTGRES_HOST: postgres
+    env_file: .env
+    depends_on:
+      migrate-blue:
+        condition: service_completed_successfully
+    volumes:
+      - models:/app/models
+    networks:
+      - infra
+
   predictor-blue:
     build:
       context: .

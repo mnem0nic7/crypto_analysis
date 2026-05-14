@@ -39,6 +39,23 @@ services:
     networks:
       - infra
 
+  trainer-green:
+    build:
+      context: .
+      dockerfile: trainer/Dockerfile
+    container_name: green-trainer
+    environment:
+      <<: *slot
+      POSTGRES_HOST: postgres
+    env_file: .env
+    depends_on:
+      migrate-green:
+        condition: service_completed_successfully
+    volumes:
+      - models:/app/models
+    networks:
+      - infra
+
   predictor-green:
     build:
       context: .

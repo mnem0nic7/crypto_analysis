@@ -4,5 +4,6 @@ COPY trainer/requirements.txt requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 COPY shared/ shared/
 COPY alembic/ alembic/
+COPY predictor/ predictor/
 COPY trainer/ trainer/
 CMD ["python", "-m", "trainer.main"]
