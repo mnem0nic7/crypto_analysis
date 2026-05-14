@@ -178,10 +178,12 @@ def warm_up_if_needed(
     if not candles:
         return
 
-    # Collect existing timestamps as unix epoch ints to avoid tz comparison issues
+    # Collect existing timestamps as unix epoch ints to avoid tz comparison issues.
+    # SQLite strips tzinfo from TIMESTAMP columns, so normalise to UTC before
+    # converting — otherwise .timestamp() would use local time on non-UTC hosts.
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=_WARMUP_CANDLES + 1)
     existing_ts_unix = {
-        int(r.ts.timestamp())
+        int((r.ts if r.ts.tzinfo else r.ts.replace(tzinfo=timezone.utc)).timestamp())
         for r in session.query(RawFeature.ts)
         .filter(RawFeature.market_id == market_id, RawFeature.ts >= cutoff)
         .all()
@@ -248,10 +250,10 @@ def warm_up_if_needed(
     if not candles:
         return
 
-    # Collect existing timestamps as unix epoch ints to avoid tz comparison issues
+    # SQLite strips tzinfo; normalise before .timestamp() to avoid local-TZ skew.
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=_WARMUP_CANDLES + 1)
     existing_ts_unix = {
-        int(r.ts.timestamp())
+        int((r.ts if r.ts.tzinfo else r.ts.replace(tzinfo=timezone.utc)).timestamp())
         for r in session.query(RawFeature.ts)
         .filter(RawFeature.market_id == market_id, RawFeature.ts >= cutoff)
         .all()
@@ -463,9 +465,9 @@ cd /workspace/crypto_analysis && python -m pytest tests/test_feature_writer.py::
 
 Expected: FAIL — `assert len(rows) >= 15` fails because warm-up is not called yet (only 1 row written by the normal fetch).
 
-- [ ] **Step 3: Add `warm_up_if_needed` call at the top of `fetch_and_write()`**
+- [ ] **Step 3: Wrap `warm_up_if_needed` call in `fetch_and_write()` with try/except**
 
-In `ingestor/feature_writer.py`, find the `fetch_and_write` function. Add one line immediately after `product_id = series_ticker_to_product_id(series_ticker)`:
+In `ingestor/feature_writer.py`, find the `fetch_and_write` function. Add the warm-up call (with its own try/except) immediately after `product_id = series_ticker_to_product_id(series_ticker)`. This keeps warm-up failures non-fatal — a DB hiccup during warm-up logs a warning and continues, rather than propagating to `_ingest_loop` and killing the daemon thread:
 
 The full `fetch_and_write` function should now be:
 
@@ -479,7 +481,10 @@ def fetch_and_write(
 ) -> None:
     from ingestor.coinbase_client import series_ticker_to_product_id
     product_id = series_ticker_to_product_id(series_ticker)
-    warm_up_if_needed(session, market_id, product_id, coinbase_client)  # pre-load history
+    try:
+        warm_up_if_needed(session, market_id, product_id, coinbase_client)
+    except Exception as exc:
+        logger.warning("Warm-up failed for %s: %s", market_id, exc)
     try:
         candles = coinbase_client.get_candles(product_id, granularity="ONE_MINUTE", limit=2)
         if not candles:
