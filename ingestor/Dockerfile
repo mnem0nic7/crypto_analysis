@@ -3,6 +3,7 @@ WORKDIR /app
 COPY ingestor/requirements.txt requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 COPY shared/ shared/
+COPY alembic/ alembic/
 COPY ingestor/ ingestor/
 COPY .env .env
 COPY Kalshi-1.txt Kalshi-1.txt

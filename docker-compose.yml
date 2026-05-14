@@ -60,6 +60,21 @@ services:
     ports:
       - "8002:8002"
 
+  trainer:
+    build:
+      context: .
+      dockerfile: trainer/Dockerfile
+    environment:
+      - POSTGRES_HOST=postgres
+    env_file: .env
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - models:/app/models
+    profiles:
+      - training
+
   api:
     build:
       context: .

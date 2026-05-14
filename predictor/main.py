@@ -49,6 +49,7 @@ def _inference_loop():
                     run_inference(session, market, loader)
                 except Exception as exc:
                     logger.error("Inference failed for %s: %s", market.market_id, exc)
+                    session.rollback()
             session.commit()
             time.sleep(_INFERENCE_INTERVAL)
 
