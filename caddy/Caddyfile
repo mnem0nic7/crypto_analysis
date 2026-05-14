@@ -1,0 +1,5 @@
+# CADDY_SNIPPET_PATH env var must be set to the absolute path of active-slot.caddy
+# Example (systemd): Environment=CADDY_SNIPPET_PATH=/opt/crypto_analysis/caddy/active-slot.caddy
+da.ai-al.site {
+  import {$CADDY_SNIPPET_PATH}
+}
