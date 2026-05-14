@@ -12,6 +12,7 @@ def test_settings_demo_key(monkeypatch):
     monkeypatch.setenv("POSTGRES_PASSWORD", "postgres")
     monkeypatch.setenv("COINBASE_CDP_KEY_NAME", "orgs/x/apiKeys/y")
     monkeypatch.setenv("COINBASE_CDP_PRIVATE_KEY", "dummy-key")
+    monkeypatch.setenv("KALSHI_ENV", "demo")
     s = Settings()
     assert s.kalshi_api_key == "demo-key"
     assert s.kalshi_env == "demo"
@@ -43,5 +44,5 @@ def test_settings_live_base_url(monkeypatch):
     monkeypatch.setenv("COINBASE_CDP_PRIVATE_KEY", "y")
     monkeypatch.setenv("KALSHI_ENV", "live")
     s = Settings()
-    assert "trading-api.kalshi.com" in s.kalshi_base_url
+    assert "api.elections.kalshi.com" in s.kalshi_base_url
     assert s.kalshi_api_key == "live-key"
