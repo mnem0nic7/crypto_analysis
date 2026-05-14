@@ -210,3 +210,119 @@ def test_slot_returns_green(monkeypatch):
     resp = client.get("/slot")
     assert resp.status_code == 200
     assert resp.json()["slot"] == "green"
+
+
+def test_stats_training_empty_db(db_session):
+    client = _make_test_app(db_session)
+    resp = client.get("/stats/training")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["last_trained_at"] is None
+    assert body["active_models"] == 0
+    assert body["settled_last_24h"] == 0
+    assert body["unmodeled_markets"] == 0
+
+
+def test_stats_training_counts_settled_24h(db_session):
+    from shared.orm import ModelRegistry
+    m = Market(
+        market_id="KXBTCUSD-TR1", ticker="BTC", status="active",
+        close_time=datetime.now(timezone.utc) + timedelta(minutes=7),
+        discovered_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    db_session.add(m)
+    db_session.flush()
+    # One prediction settled within last 24h
+    p_recent = Prediction(
+        market_id="KXBTCUSD-TR1",
+        ts=datetime.now(timezone.utc) - timedelta(hours=2),
+        direction="UP", confidence=0.7, low_confidence=False,
+        model_version="v1",
+        settled_at=datetime.now(timezone.utc) - timedelta(hours=2),
+        actual_outcome=1,
+    )
+    # One prediction settled more than 24h ago — should NOT be counted
+    p_old = Prediction(
+        market_id="KXBTCUSD-TR1",
+        ts=datetime.now(timezone.utc) - timedelta(hours=25),
+        direction="DOWN", confidence=0.6, low_confidence=False,
+        model_version="v1",
+        settled_at=datetime.now(timezone.utc) - timedelta(hours=25),
+        actual_outcome=0,
+    )
+    db_session.add(p_recent)
+    db_session.add(p_old)
+    db_session.flush()
+    client = _make_test_app(db_session)
+    resp = client.get("/stats/training")
+    assert resp.status_code == 200
+    assert resp.json()["settled_last_24h"] == 1
+
+
+def test_stats_training_counts_active_models(db_session):
+    from shared.orm import ModelRegistry
+    m = Market(
+        market_id="KXBTCUSD-TR2", ticker="BTC", status="active",
+        close_time=datetime.now(timezone.utc) + timedelta(minutes=7),
+        discovered_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    db_session.add(m)
+    db_session.flush()
+    active_reg = ModelRegistry(
+        market_id="KXBTCUSD-TR2", version="v1",
+        trained_at=datetime.now(timezone.utc) - timedelta(hours=1),
+        training_rows=200, brier_score=0.22,
+        artifact_path="/app/models/KXBTCUSD-TR2_v1.joblib",
+        is_active=True,
+    )
+    inactive_reg = ModelRegistry(
+        market_id="KXBTCUSD-TR2", version="v0",
+        trained_at=datetime.now(timezone.utc) - timedelta(hours=2),
+        training_rows=100, brier_score=0.28,
+        artifact_path="/app/models/KXBTCUSD-TR2_v0.joblib",
+        is_active=False,
+    )
+    db_session.add(active_reg)
+    db_session.add(inactive_reg)
+    db_session.flush()
+    client = _make_test_app(db_session)
+    resp = client.get("/stats/training")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["active_models"] == 1
+    assert body["last_trained_at"] is not None
+
+
+def test_stats_training_detects_unmodeled_markets(db_session):
+    from shared.orm import ModelRegistry
+    m1 = Market(
+        market_id="KXBTCUSD-TR3", ticker="BTC", status="active",
+        close_time=datetime.now(timezone.utc) + timedelta(minutes=7),
+        discovered_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    m2 = Market(
+        market_id="KXBTCUSD-TR4", ticker="ETH", status="active",
+        close_time=datetime.now(timezone.utc) + timedelta(minutes=7),
+        discovered_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    db_session.add(m1)
+    db_session.add(m2)
+    db_session.flush()
+    # Only m1 has an active model
+    reg = ModelRegistry(
+        market_id="KXBTCUSD-TR3", version="v1",
+        trained_at=datetime.now(timezone.utc),
+        training_rows=150, brier_score=0.20,
+        artifact_path="/app/models/KXBTCUSD-TR3_v1.joblib",
+        is_active=True,
+    )
+    db_session.add(reg)
+    db_session.flush()
+    client = _make_test_app(db_session)
+    resp = client.get("/stats/training")
+    assert resp.status_code == 200
+    assert resp.json()["unmodeled_markets"] == 1

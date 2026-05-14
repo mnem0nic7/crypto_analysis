@@ -241,6 +241,53 @@ def create_app(session_factory_fn: Callable = None) -> FastAPI:
     def get_slot():
         return {"slot": os.environ.get("DEPLOY_SLOT", "blue")}
 
+    @app.get("/stats/training")
+    def get_stats_training(session: Session = Depends(_get_db)):
+        from shared.orm import ModelRegistry
+        from sqlalchemy import func
+        from datetime import timedelta
+
+        now = datetime.now(timezone.utc)
+        cutoff_24h = now - timedelta(hours=24)
+
+        last_trained = session.query(func.max(ModelRegistry.trained_at)).scalar()
+
+        active_models = (
+            session.query(func.count(ModelRegistry.id))
+            .filter(ModelRegistry.is_active == True)  # noqa: E712
+            .scalar()
+        ) or 0
+
+        settled_24h = (
+            session.query(func.count(Prediction.id))
+            .filter(
+                Prediction.actual_outcome != None,  # noqa: E711
+                Prediction.ts >= cutoff_24h,
+            )
+            .scalar()
+        ) or 0
+
+        active_market_ids = [
+            r[0]
+            for r in session.query(Market.market_id)
+            .filter(Market.status == "active")
+            .all()
+        ]
+        modeled_ids = {
+            r[0]
+            for r in session.query(ModelRegistry.market_id)
+            .filter(ModelRegistry.is_active == True)  # noqa: E712
+            .all()
+        }
+        unmodeled = sum(1 for mid in active_market_ids if mid not in modeled_ids)
+
+        return {
+            "last_trained_at": last_trained.isoformat() if last_trained else None,
+            "active_models": active_models,
+            "settled_last_24h": settled_24h,
+            "unmodeled_markets": unmodeled,
+        }
+
     return app
 
 
