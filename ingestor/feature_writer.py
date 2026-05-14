@@ -67,7 +67,10 @@ def warm_up_if_needed(
 
 def _rows_within(prior_rows: list, minutes: float) -> list:
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=minutes)
-    return [r for r in prior_rows if r.ts >= cutoff]
+    return [
+        r for r in prior_rows
+        if (r.ts if r.ts.tzinfo else r.ts.replace(tzinfo=timezone.utc)) >= cutoff
+    ]
 
 
 def compute_derived_fields(current_price: float, prior_rows: list) -> dict:
@@ -134,6 +137,10 @@ def fetch_and_write(
 ) -> None:
     from ingestor.coinbase_client import series_ticker_to_product_id
     product_id = series_ticker_to_product_id(series_ticker)
+    try:
+        warm_up_if_needed(session, market_id, product_id, coinbase_client)
+    except Exception as exc:
+        logger.warning("Warm-up failed for %s: %s", market_id, exc)
     try:
         candles = coinbase_client.get_candles(product_id, granularity="ONE_MINUTE", limit=2)
         if not candles:

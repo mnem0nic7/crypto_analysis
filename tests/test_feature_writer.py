@@ -150,3 +150,33 @@ def test_warm_up_does_not_raise_when_coinbase_fails(db_session):
     # No rows written, no exception raised
     count = db_session.query(RawFeature).filter_by(market_id="KXBTCUSD-WU4").count()
     assert count == 0
+
+
+def test_fetch_and_write_triggers_warm_up_on_first_call(db_session):
+    from ingestor.feature_writer import fetch_and_write
+    _make_market("KXBTCUSD-FW1", db_session)
+
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+
+    def _get_candles(product_id, granularity="ONE_MINUTE", limit=2, start=None, end=None):
+        if limit == 20:
+            return [
+                {"start": now_ts - (i * 60), "open": 60000.0, "high": 60100.0,
+                 "low": 59900.0, "close": 60050.0, "volume": 1.0}
+                for i in range(15)
+            ]
+        return [{"start": now_ts, "open": 60000.0, "high": 60100.0,
+                 "low": 59900.0, "close": 60100.0, "volume": 2.0}]
+
+    mock_cb = MagicMock()
+    mock_cb.get_candles.side_effect = _get_candles
+    mock_cb.get_order_book.return_value = {"bid_depth": 5.0, "ask_depth": 3.0, "book_imbalance": 0.25}
+
+    mock_kalshi = MagicMock()
+    mock_kalshi.get_market_price.return_value = {"yes_price": 0.55, "no_price": 0.45, "volume": 1000}
+
+    fetch_and_write(db_session, "KXBTCUSD-FW1", "KXBTCUSD", mock_cb, mock_kalshi)
+
+    rows = db_session.query(RawFeature).filter_by(market_id="KXBTCUSD-FW1").all()
+    # 15 warm-up rows + 1 normal row = 16 total
+    assert len(rows) >= 15
