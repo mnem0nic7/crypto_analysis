@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     demo_kalshi_write_private_key_path: str
     live_kalshi_api_key: str
     live_kalshi_read_private_key_path: str
-    kalshi_env: Literal["demo", "live"] = "demo"
+    kalshi_env: Literal["demo", "live"] = "live"
 
     # Postgres
     postgres_password: str
