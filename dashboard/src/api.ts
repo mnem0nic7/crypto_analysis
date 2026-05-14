@@ -85,3 +85,13 @@ export const fetchHealth = (): Promise<HealthResponse> =>
 
 export const fetchSlot = (): Promise<SlotResponse> =>
   apiFetch<SlotResponse>('/slot')
+
+export interface TrainingStatus {
+  last_trained_at: string | null
+  active_models: number
+  settled_last_24h: number
+  unmodeled_markets: number
+}
+
+export const fetchTrainingStatus = (): Promise<TrainingStatus> =>
+  apiFetch<TrainingStatus>('/stats/training')
