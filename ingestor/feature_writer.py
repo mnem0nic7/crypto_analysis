@@ -7,6 +7,62 @@ from shared.orm import RawFeature
 
 logger = logging.getLogger(__name__)
 _POLL_INTERVAL_SECONDS = 30
+_WARMUP_CANDLES = 20  # minutes of history to pre-load on cold start
+
+
+def warm_up_if_needed(
+    session: Session,
+    market_id: str,
+    product_id: str,
+    coinbase_client,
+) -> None:
+    existing_count = (
+        session.query(RawFeature)
+        .filter(RawFeature.market_id == market_id)
+        .count()
+    )
+    if existing_count >= _WARMUP_CANDLES:
+        return
+
+    try:
+        candles = coinbase_client.get_candles(
+            product_id, granularity="ONE_MINUTE", limit=_WARMUP_CANDLES
+        )
+    except Exception as exc:
+        logger.warning("Warm-up fetch failed for %s: %s", product_id, exc)
+        return
+
+    if not candles:
+        return
+
+    # SQLite strips tzinfo; normalise before .timestamp() to avoid local-TZ skew.
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=_WARMUP_CANDLES + 1)
+    existing_ts_unix = {
+        int((r.ts if r.ts.tzinfo else r.ts.replace(tzinfo=timezone.utc)).timestamp())
+        for r in session.query(RawFeature.ts)
+        .filter(RawFeature.market_id == market_id, RawFeature.ts >= cutoff)
+        .all()
+    }
+
+    new_rows = 0
+    for candle in sorted(candles, key=lambda c: c["start"]):
+        if candle["start"] in existing_ts_unix:
+            continue
+        ts = datetime.fromtimestamp(candle["start"], tz=timezone.utc)
+        session.add(RawFeature(
+            market_id=market_id,
+            ts=ts,
+            price_open=candle["open"],
+            price_high=candle["high"],
+            price_low=candle["low"],
+            price_close=candle["close"],
+            volume=candle["volume"],
+        ))
+        new_rows += 1
+
+    if new_rows:
+        session.flush()
+        logger.info("Warmed up %d historical rows for %s", new_rows, market_id)
 
 
 def _rows_within(prior_rows: list, minutes: float) -> list:

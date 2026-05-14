@@ -50,3 +50,89 @@ def test_build_raw_feature_row_has_all_fields():
     assert float(row.book_imbalance) == pytest.approx(0.25)
     assert float(row.kalshi_yes_price) == pytest.approx(0.57)
     assert float(row.price_momentum_15m) == pytest.approx(0.012)
+
+
+# ── warm_up_if_needed ──────────────────────────────────────────────────────────
+
+def _make_market(market_id: str, db_session):
+    from shared.orm import Market
+    m = Market(
+        market_id=market_id, ticker="KXBTCUSD", status="active",
+        discovered_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(timezone.utc),
+    )
+    db_session.add(m)
+    db_session.flush()
+    return m
+
+
+def _fake_candles(n: int, close: float = 60050.0) -> list[dict]:
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    return [
+        {
+            "start": now_ts - (i * 60),
+            "open": 60000.0, "high": 60100.0, "low": 59900.0,
+            "close": close, "volume": 1.0,
+        }
+        for i in range(n)
+    ]
+
+
+def test_warm_up_writes_rows_when_db_empty(db_session):
+    from ingestor.feature_writer import warm_up_if_needed
+    _make_market("KXBTCUSD-WU1", db_session)
+
+    mock_cb = MagicMock()
+    mock_cb.get_candles.return_value = _fake_candles(15)
+
+    warm_up_if_needed(db_session, "KXBTCUSD-WU1", "BTC-USD", mock_cb)
+
+    rows = db_session.query(RawFeature).filter_by(market_id="KXBTCUSD-WU1").all()
+    assert len(rows) == 15
+    assert all(float(r.price_close) == pytest.approx(60050.0) for r in rows)
+    # Live-only fields must be None for warm-up rows
+    assert all(r.bid_depth_1pct is None for r in rows)
+    assert all(r.kalshi_yes_price is None for r in rows)
+    mock_cb.get_candles.assert_called_once_with("BTC-USD", granularity="ONE_MINUTE", limit=20)
+
+
+def test_warm_up_skips_when_already_warm(db_session):
+    from ingestor.feature_writer import warm_up_if_needed
+    _make_market("KXBTCUSD-WU2", db_session)
+
+    # Insert 20 existing rows so the market is already warm
+    for i in range(20):
+        db_session.add(RawFeature(
+            market_id="KXBTCUSD-WU2",
+            ts=datetime.now(timezone.utc) - timedelta(minutes=i),
+            price_close=60000.0,
+        ))
+    db_session.flush()
+
+    mock_cb = MagicMock()
+    warm_up_if_needed(db_session, "KXBTCUSD-WU2", "BTC-USD", mock_cb)
+
+    mock_cb.get_candles.assert_not_called()
+
+
+def test_warm_up_idempotent_skips_existing_timestamps(db_session):
+    from ingestor.feature_writer import warm_up_if_needed
+    _make_market("KXBTCUSD-WU3", db_session)
+
+    candles = _fake_candles(15)
+    # Pre-insert 3 rows whose timestamps match the first 3 candles
+    for c in candles[:3]:
+        db_session.add(RawFeature(
+            market_id="KXBTCUSD-WU3",
+            ts=datetime.fromtimestamp(c["start"], tz=timezone.utc),
+            price_close=60000.0,
+        ))
+    db_session.flush()
+
+    mock_cb = MagicMock()
+    mock_cb.get_candles.return_value = candles
+
+    warm_up_if_needed(db_session, "KXBTCUSD-WU3", "BTC-USD", mock_cb)
+
+    total = db_session.query(RawFeature).filter_by(market_id="KXBTCUSD-WU3").count()
+    assert total == 15  # 3 pre-existing + 12 new, no duplicates
