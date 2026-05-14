@@ -169,21 +169,35 @@ def create_app(session_factory_fn: Callable = None) -> FastAPI:
             sum(float(r.accuracy or 0) * r.settled_count for r in rows) / total_settled
         )
 
-        hc_preds = (
-            session.query(Prediction)
-            .filter(
-                Prediction.actual_outcome != None,  # noqa: E711
-                Prediction.confidence >= 0.65,
-            )
-            .all()
+        hc_expr = sa_case(
+            (
+                (Prediction.confidence >= 0.65)
+                & (Prediction.direction == "UP")
+                & (Prediction.actual_outcome == 1),
+                1,
+            ),
+            (
+                (Prediction.confidence >= 0.65)
+                & (Prediction.direction == "DOWN")
+                & (Prediction.actual_outcome == 0),
+                1,
+            ),
+            else_=0,
         )
-        if hc_preds:
-            hc_correct = sum(
-                1 for p in hc_preds
-                if (p.direction == "UP" and p.actual_outcome == 1)
-                or (p.direction == "DOWN" and p.actual_outcome == 0)
+        hc_total_expr = sa_case(
+            (Prediction.confidence >= 0.65, 1),
+            else_=0,
+        )
+        hc_row = (
+            session.query(
+                func.sum(hc_expr).label("hc_correct"),
+                func.sum(hc_total_expr).label("hc_total"),
             )
-            high_conf_accuracy = hc_correct / len(hc_preds)
+            .filter(Prediction.actual_outcome != None)  # noqa: E711
+            .one()
+        )
+        if hc_row.hc_total:
+            high_conf_accuracy = float(hc_row.hc_correct or 0) / float(hc_row.hc_total)
         else:
             high_conf_accuracy = 0.0
 

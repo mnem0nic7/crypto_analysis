@@ -190,9 +190,8 @@ def test_stats_models_excludes_inactive(db_session):
     assert resp.json() == []
 
 
-def test_slot_defaults_to_blue():
-    import os
-    os.environ.pop("DEPLOY_SLOT", None)
+def test_slot_defaults_to_blue(monkeypatch):
+    monkeypatch.delenv("DEPLOY_SLOT", raising=False)
     from fastapi.testclient import TestClient
     import api.main as api_module
     app = api_module.create_app(lambda: None)
@@ -200,3 +199,14 @@ def test_slot_defaults_to_blue():
     resp = client.get("/slot")
     assert resp.status_code == 200
     assert resp.json()["slot"] == "blue"
+
+
+def test_slot_returns_green(monkeypatch):
+    monkeypatch.setenv("DEPLOY_SLOT", "green")
+    from fastapi.testclient import TestClient
+    import api.main as api_module
+    app = api_module.create_app(lambda: None)
+    client = TestClient(app)
+    resp = client.get("/slot")
+    assert resp.status_code == 200
+    assert resp.json()["slot"] == "green"
