@@ -53,3 +53,34 @@ def test_series_ticker_to_coinbase_product():
     assert series_ticker_to_product_id("KXBTCUSD") == "BTC-USD"
     assert series_ticker_to_product_id("KXETHUSD") == "ETH-USD"
     assert series_ticker_to_product_id("KXSOLUSD") == "SOL-USD"
+    # New 15M tickers work identically (last 3 chars stripped: "15M" = "USD" = 3 chars)
+    assert series_ticker_to_product_id("KXBTC15M") == "BTC-USD"
+    assert series_ticker_to_product_id("KXHYPE15M") == "HYPE-USD"
+
+
+def test_get_candles_with_start_end_omits_limit(monkeypatch):
+    """When start+end are given, limit must not be sent to the API."""
+    captured = {}
+
+    def fake_get(url, headers, params):
+        captured["params"] = params
+        mock = MagicMock()
+        mock.raise_for_status = lambda: None
+        mock.json.return_value = {"candles": [
+            {"start": "1700000000", "open": "50000", "high": "50100",
+             "low": "49900", "close": "50050", "volume": "5.0"}
+        ]}
+        return mock
+
+    from ingestor.coinbase_client import CoinbaseClient
+    client = CoinbaseClient.__new__(CoinbaseClient)
+    client._key_name = "k"
+    client._private_key = None
+    client._http = MagicMock()
+    client._http.get.side_effect = fake_get
+    candles = client.get_candles("BTC-USD", start=1699999700, end=1700000000)
+    assert "limit" not in captured["params"]
+    assert captured["params"]["start"] == "1699999700"
+    assert captured["params"]["end"] == "1700000000"
+    assert len(candles) == 1
+    assert candles[0]["close"] == 50050.0
