@@ -20,14 +20,11 @@ services:
     build:
       context: .
       dockerfile: ingestor/Dockerfile
-    command: >
-      sh -c "
-        POSTGRES_HOST=postgres
-        alembic upgrade head
-      "
+    command: sh -c "alembic upgrade head"
     environment:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_HOST=postgres
+    env_file: .env
     depends_on:
       postgres:
         condition: service_healthy
