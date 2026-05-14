@@ -224,7 +224,6 @@ def test_stats_training_empty_db(db_session):
 
 
 def test_stats_training_counts_settled_24h(db_session):
-    from shared.orm import ModelRegistry
     m = Market(
         market_id="KXBTCUSD-TR1", ticker="BTC", status="active",
         close_time=datetime.now(timezone.utc) + timedelta(minutes=7),
