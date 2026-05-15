@@ -629,6 +629,110 @@ def create_app(session_factory_fn: Callable = None) -> FastAPI:
             "unmodeled_markets": unmodeled,
         }
 
+    from shared.orm import SweepRun, SweepResult
+
+    @app.get("/analysis/runs")
+    def get_analysis_runs(session: Session = Depends(_get_db)):
+        runs = (
+            session.query(SweepRun)
+            .order_by(SweepRun.run_at.desc())
+            .all()
+        )
+        return [
+            {
+                "id": r.id,
+                "run_at": r.run_at.isoformat() if r.run_at else None,
+                "status": r.status,
+                "n_predictions": r.n_settled_predictions,
+                "elapsed_seconds": float(r.elapsed_seconds) if r.elapsed_seconds is not None else None,
+                "best_net_pnl_dollars": float(r.best_net_pnl_dollars) if r.best_net_pnl_dollars is not None else None,
+            }
+            for r in runs
+        ]
+
+    @app.get("/analysis/runs/latest")
+    def get_analysis_runs_latest(session: Session = Depends(_get_db)):
+        run = (
+            session.query(SweepRun)
+            .filter(SweepRun.status == "complete")
+            .order_by(SweepRun.run_at.desc())
+            .first()
+        )
+        if run is None:
+            raise HTTPException(status_code=404, detail="No completed sweep run found")
+        return {
+            "id": run.id,
+            "run_at": run.run_at.isoformat() if run.run_at else None,
+            "status": run.status,
+            "n_predictions": run.n_settled_predictions,
+            "elapsed_seconds": float(run.elapsed_seconds) if run.elapsed_seconds is not None else None,
+            "best_net_pnl_dollars": float(run.best_net_pnl_dollars) if run.best_net_pnl_dollars is not None else None,
+        }
+
+    @app.get("/analysis/runs/{run_id}/results")
+    def get_analysis_run_results(
+        run_id: int,
+        type: str = "top_k",
+        session: Session = Depends(_get_db),
+    ):
+        run = session.get(SweepRun, run_id)
+        if run is None:
+            raise HTTPException(status_code=404, detail="Sweep run not found")
+        results = (
+            session.query(SweepResult)
+            .filter(SweepResult.run_id == run_id, SweepResult.result_type == type)
+            .all()
+        )
+
+        def _f(v):
+            return float(v) if v is not None else None
+
+        if type == "top_k":
+            return [
+                {
+                    "rank": r.rank,
+                    "n_trades": r.n_trades,
+                    "win_rate": _f(r.win_rate),
+                    "net_pnl_dollars": _f(r.net_pnl_dollars),
+                    "ev_per_contract": _f(r.ev_per_contract),
+                    "starvation_rate": _f(r.starvation_rate),
+                    "min_fee_adjusted_edge_bps": r.min_fee_adjusted_edge_bps,
+                    "max_spread_bps": r.max_spread_bps,
+                    "min_confidence": _f(r.min_confidence),
+                    "min_contract_price_dollars": _f(r.min_contract_price_dollars),
+                    "crypto_live_min_market_age_seconds": r.crypto_live_min_market_age_seconds,
+                    "crypto_autonomy_min_seconds_to_close": r.crypto_autonomy_min_seconds_to_close,
+                    "crypto_taker_fallback_close_seconds": r.crypto_taker_fallback_close_seconds,
+                    "crypto_market_price_anchor_weight": _f(r.crypto_market_price_anchor_weight),
+                    "crypto_late_sure_thing_min_probability": _f(r.crypto_late_sure_thing_min_probability),
+                    "crypto_late_sure_thing_min_market_probability": _f(r.crypto_late_sure_thing_min_market_probability),
+                }
+                for r in results
+            ]
+        else:  # marginal
+            return [
+                {
+                    "knob_name": r.knob_name,
+                    "knob_value": r.knob_value,
+                    "net_pnl_dollars": _f(r.net_pnl_dollars),
+                    "ev_per_contract": _f(r.ev_per_contract),
+                }
+                for r in results
+            ]
+
+    @app.post("/analysis/runs")
+    def post_analysis_runs():
+        from analysis.main import run_once
+        run = run_once(fee_bps=50)
+        return {
+            "id": run.id,
+            "run_at": run.run_at.isoformat() if run.run_at else None,
+            "status": run.status,
+            "n_predictions": run.n_settled_predictions,
+            "elapsed_seconds": float(run.elapsed_seconds) if run.elapsed_seconds is not None else None,
+            "best_net_pnl_dollars": float(run.best_net_pnl_dollars) if run.best_net_pnl_dollars is not None else None,
+        }
+
     return app
 
 
