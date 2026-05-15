@@ -12,6 +12,7 @@ from shared.orm import Market, ModelRegistry
 from trainer.dataset import build_training_dataset
 
 logger = logging.getLogger(__name__)
+_MIN_PROMOTABLE_ROWS = 100
 
 
 def _ensure_sentinel_market(session: Session, series_ticker: str) -> None:
@@ -73,13 +74,26 @@ def train_and_promote(
         .first()
     )
     current_brier = float(current_active.brier_score) if current_active else float("inf")
+    current_rows = int(current_active.training_rows) if current_active else 0
 
-    version_num = (int(current_active.version.lstrip("v")) + 1) if current_active else 1
+    max_version_row = (
+        session.query(ModelRegistry)
+        .filter(ModelRegistry.market_id == series_ticker)
+        .order_by(ModelRegistry.id.desc())
+        .first()
+    )
+    version_num = (int(max_version_row.version.lstrip("v")) + 1) if max_version_row else 1
     version = f"v{version_num}"
     artifact_path = os.path.join(models_dir, f"{series_ticker}_{version}.joblib")
     joblib.dump(model, artifact_path)
 
-    promoted = new_brier < current_brier
+    has_promotable_rows = len(X) >= _MIN_PROMOTABLE_ROWS
+    replaces_underfilled_active = (
+        current_active is not None
+        and current_rows < _MIN_PROMOTABLE_ROWS
+        and has_promotable_rows
+    )
+    promoted = has_promotable_rows and (replaces_underfilled_active or new_brier < current_brier)
     if promoted and current_active:
         current_active.is_active = False
 

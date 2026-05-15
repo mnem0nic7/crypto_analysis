@@ -158,6 +158,80 @@ def test_train_does_not_promote_when_worse(db_session, tmp_path):
     assert result["promoted"] is False
 
 
+def test_train_does_not_promote_underfilled_candidate(db_session, tmp_path):
+    from shared.orm import ModelRegistry
+    series_ticker = "KXBTC15M-UC"
+    _seed_series_data(
+        db_session,
+        series_ticker=series_ticker,
+        n_contracts=3,
+        market_id_prefix=series_ticker,
+    )
+    sentinel = Market(
+        market_id=series_ticker, ticker=series_ticker, status="series",
+        discovered_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc),
+    )
+    db_session.add(sentinel)
+    db_session.flush()
+    old_reg = ModelRegistry(
+        market_id=series_ticker,
+        version="v0",
+        trained_at=datetime.now(timezone.utc),
+        training_rows=500,
+        brier_score=1.0,
+        artifact_path=str(tmp_path / "active.joblib"),
+        is_active=True,
+    )
+    db_session.add(old_reg)
+    db_session.flush()
+
+    result = train_and_promote(
+        session=db_session, series_ticker=series_ticker,
+        lookback_hours=2160, models_dir=str(tmp_path),
+    )
+
+    assert result["promoted"] is False
+    db_session.refresh(old_reg)
+    assert old_reg.is_active is True
+
+
+def test_train_promotes_over_underfilled_active_model(db_session, tmp_path):
+    from shared.orm import ModelRegistry
+    series_ticker = "KXBTC15M-UF"
+    _seed_series_data(
+        db_session,
+        series_ticker=series_ticker,
+        n_contracts=30,
+        market_id_prefix=series_ticker,
+    )
+    sentinel = Market(
+        market_id=series_ticker, ticker=series_ticker, status="series",
+        discovered_at=datetime.now(timezone.utc), updated_at=datetime.now(timezone.utc),
+    )
+    db_session.add(sentinel)
+    db_session.flush()
+    old_reg = ModelRegistry(
+        market_id=series_ticker,
+        version="v0",
+        trained_at=datetime.now(timezone.utc),
+        training_rows=80,
+        brier_score=0.001,
+        artifact_path=str(tmp_path / "underfilled.joblib"),
+        is_active=True,
+    )
+    db_session.add(old_reg)
+    db_session.flush()
+
+    result = train_and_promote(
+        session=db_session, series_ticker=series_ticker,
+        lookback_hours=2160, models_dir=str(tmp_path),
+    )
+
+    assert result["promoted"] is True
+    db_session.refresh(old_reg)
+    assert old_reg.is_active is False
+
+
 # ── backfill_outcomes tests ─────────────────────────────────────────────────
 
 def test_backfill_sets_actual_outcome(db_session):

@@ -1,6 +1,7 @@
 # trainer/main.py
 import logging
 import time
+from sqlalchemy import text
 from shared.db import make_session_factory, session_scope
 from shared.orm import Market
 from shared.settings import Settings
@@ -9,9 +10,43 @@ from trainer.train import train_and_promote
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger(__name__)
+_TRAINING_CAMPAIGN_LOCK_KEYS = (1129470288, 1414676809)  # "CRYP", "TRAI"
+
+
+def _try_acquire_campaign_lock(session) -> bool:
+    if session.get_bind().dialect.name != "postgresql":
+        return True
+
+    key1, key2 = _TRAINING_CAMPAIGN_LOCK_KEYS
+    return bool(session.execute(
+        text("SELECT pg_try_advisory_lock(:key1, :key2)"),
+        {"key1": key1, "key2": key2},
+    ).scalar())
+
+
+def _release_campaign_lock(session) -> None:
+    if session.get_bind().dialect.name != "postgresql":
+        return
+
+    key1, key2 = _TRAINING_CAMPAIGN_LOCK_KEYS
+    session.execute(
+        text("SELECT pg_advisory_unlock(:key1, :key2)"),
+        {"key1": key1, "key2": key2},
+    )
 
 
 def run_training_campaign(settings: Settings, session_factory) -> None:
+    with session_scope(session_factory) as lock_session:
+        if not _try_acquire_campaign_lock(lock_session):
+            logger.info("Training campaign already running — skipping this cycle")
+            return
+        try:
+            _run_training_campaign_unlocked(settings, session_factory)
+        finally:
+            _release_campaign_lock(lock_session)
+
+
+def _run_training_campaign_unlocked(settings: Settings, session_factory) -> None:
     with session_scope(session_factory) as session:
         backfilled = backfill_outcomes(session)
         logger.info("Backfilled %d outcomes before training", backfilled)
