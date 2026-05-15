@@ -1,8 +1,23 @@
+.errorBanner { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; margin-bottom: 12px; background: rgba(239,68,68,0.15); border: 1px solid rgba(239,68,68,0.4); border-radius: 6px; color: #f87171; font-size: 13px; }
+.errorDismiss { background: none; border: none; color: #f87171; cursor: pointer; font-size: 14px; padding: 0 0 0 12px; opacity: 0.7; }
+.errorDismiss:hover { opacity: 1; }
+
 .runTable { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 12px; }
-.runTable th { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); color: var(--text-label); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; }
-.runTable td { padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.runTable th { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--border); color: var(--text-label); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; }
+.runTable td { padding: 7px 10px; border-bottom: 1px solid var(--border); }
 .runRowActive { background: rgba(124,58,237,0.15); }
 .runRowActive td { color: var(--text); }
+.runRowRunning { opacity: 0.75; }
+
+.statusRunning { display: inline-flex; align-items: center; gap: 5px; color: #f59e0b; font-size: 11px; }
+.statusRunning::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #f59e0b; animation: pulse 1.4s ease-in-out infinite; }
+.statusComplete { color: #34d399; font-size: 11px; }
+.statusFailed { color: #f87171; font-size: 11px; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
 
 .sectionTitle { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-label); margin-bottom: 12px; margin-top: 20px; }
 
@@ -16,7 +31,8 @@
 .resultsTable th:first-child { text-align: left; }
 .resultsTable td { padding: 4px 6px; border-bottom: 1px solid var(--border); text-align: right; }
 .resultsTable td:first-child { text-align: left; }
-.resultsRowActive { background: rgba(124,58,237,0.15); }
+.resultsRowAlt { background: rgba(255,255,255,0.02); }
+.resultsRowActive { background: rgba(124,58,237,0.18) !important; }
 .resultsRowActive td { color: var(--text); }
 
 .settingsCard { background: var(--bg-card); border-radius: 6px; padding: 16px; margin-top: 12px; }

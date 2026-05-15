@@ -50,6 +50,21 @@ def run_once(fee_bps: int = 50) -> SweepRun:
     return run
 
 
+def execute_run(run_id: int) -> None:
+    """Execute an existing 'running' sweep run by ID. Creates its own DB session."""
+    with session_scope() as session:
+        run = session.get(SweepRun, run_id)
+        if run is None:
+            logger.error("Run %d not found", run_id)
+            return
+        try:
+            execute_sweep(session, run)
+            run.status = "complete"
+        except Exception:
+            run.status = "failed"
+            logger.exception("Sweep run %d failed", run_id)
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     run = run_once()

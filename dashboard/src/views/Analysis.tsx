@@ -24,6 +24,10 @@ const KNOB_COLS: Array<{ key: keyof SweepResultRow; label: string }> = [
   { key: 'crypto_late_sure_thing_min_market_probability', label: 'LST mkt' },
 ]
 
+const KNOB_LABEL_MAP: Record<string, string> = Object.fromEntries(
+  KNOB_COLS.map(c => [String(c.key), c.label])
+)
+
 function fmt(v: number | null, decimals = 2): string {
   if (v == null) return '—'
   return v.toFixed(decimals)
@@ -56,6 +60,7 @@ export default function Analysis() {
       const data = await fetchSweepRuns()
       const sorted = [...data].sort((a, b) => b.id - a.id)
       setRuns(sorted)
+      setError(null)
       if (sorted.length > 0 && selectedRunId == null) {
         setSelectedRunId(sorted[0].id)
       }
@@ -106,7 +111,7 @@ export default function Analysis() {
       byKnob[m.knob_name].push(m.net_pnl_dollars)
     }
     return Object.entries(byKnob).map(([knob, vals]) => ({
-      knob: knob.replace('crypto_', '').replace(/_/g, ' '),
+      knob: KNOB_LABEL_MAP[knob] ?? knob.replace(/^crypto_/, '').replace(/_/g, ' '),
       fullName: knob,
       range: Math.max(...vals) - Math.min(...vals),
     })).sort((a, b) => b.range - a.range)
@@ -135,7 +140,12 @@ export default function Analysis() {
 
   return (
     <div>
-      {error && <div className="error-banner">{error}</div>}
+      {error && (
+        <div className={styles.errorBanner}>
+          {error}
+          <button className={styles.errorDismiss} onClick={() => setError(null)}>✕</button>
+        </div>
+      )}
 
       {/* 1. Run history strip */}
       <div className={styles.runHeader}>
@@ -158,13 +168,22 @@ export default function Analysis() {
             {runs.map(r => (
               <tr
                 key={r.id}
-                className={r.id === selectedRunId ? styles.runRowActive : ''}
-                onClick={() => setSelectedRunId(r.id)}
-                style={{ cursor: 'pointer' }}
+                className={[
+                  r.id === selectedRunId ? styles.runRowActive : '',
+                  r.status === 'running' ? styles.runRowRunning : '',
+                ].filter(Boolean).join(' ')}
+                onClick={() => r.status !== 'running' && setSelectedRunId(r.id)}
+                style={{ cursor: r.status === 'running' ? 'default' : 'pointer' }}
               >
                 <td>{r.id}</td>
                 <td>{new Date(r.run_at).toLocaleString()}</td>
-                <td>{r.status}</td>
+                <td>
+                  <span className={
+                    r.status === 'running' ? styles.statusRunning :
+                    r.status === 'complete' ? styles.statusComplete :
+                    styles.statusFailed
+                  }>{r.status}</span>
+                </td>
                 <td>{r.n_predictions?.toLocaleString() ?? '—'}</td>
                 <td>{r.elapsed_seconds != null ? `${r.elapsed_seconds.toFixed(1)}s` : '—'}</td>
                 <td>{r.best_net_pnl_dollars != null ? `$${r.best_net_pnl_dollars.toFixed(2)}` : '—'}</td>
@@ -179,10 +198,10 @@ export default function Analysis() {
         <>
           <div className={styles.sectionTitle}>Knob Importance (P&amp;L range by knob)</div>
           <div className={styles.chartCard}>
-            <ResponsiveContainer width="100%" height={Math.max(200, importanceData.length * 28)}>
-              <BarChart data={importanceData} layout="vertical" margin={{ top: 4, right: 16, bottom: 4, left: 80 }}>
+            <ResponsiveContainer width="100%" height={Math.max(220, importanceData.length * 36)}>
+              <BarChart data={importanceData} layout="vertical" margin={{ top: 4, right: 24, bottom: 4, left: 110 }}>
                 <XAxis type="number" tick={{ fill: '#94a3b8', fontSize: 11 }} tickFormatter={v => `$${v.toFixed(0)}`} />
-                <YAxis type="category" dataKey="knob" width={80} tick={{ fill: '#94a3b8', fontSize: 11 }} />
+                <YAxis type="category" dataKey="knob" width={110} tick={{ fill: '#94a3b8', fontSize: 12 }} />
                 <Tooltip
                   contentStyle={tooltipStyle}
                   formatter={(v: unknown) => [`$${(v as number).toFixed(2)}`, 'P&L range']}
@@ -204,7 +223,10 @@ export default function Analysis() {
       {selectedKnob && knobDetailData.length > 0 && (
         <div className={styles.chartCard}>
           <div className={styles.knobDetailHeader}>
-            <span style={{ fontSize: 12, color: 'var(--text)' }}>{selectedKnob}</span>
+            <span style={{ fontSize: 12, color: 'var(--text)' }}>
+              {KNOB_LABEL_MAP[selectedKnob] ?? selectedKnob}
+              <span style={{ marginLeft: 6, fontSize: 10, color: 'var(--text-muted)' }}>{selectedKnob}</span>
+            </span>
             <button className={styles.closeBtn} onClick={() => setSelectedKnob(null)}>Close</button>
           </div>
           <ResponsiveContainer width="100%" height={180}>
@@ -243,7 +265,10 @@ export default function Analysis() {
                 {topRows.map((row, i) => (
                   <tr
                     key={i}
-                    className={row === selectedResult ? styles.resultsRowActive : ''}
+                    className={[
+                      row === selectedResult ? styles.resultsRowActive : '',
+                      i % 2 === 1 ? styles.resultsRowAlt : '',
+                    ].filter(Boolean).join(' ')}
                     onClick={() => setSelectedResult(row === selectedResult ? null : row)}
                     style={{ cursor: 'pointer' }}
                   >

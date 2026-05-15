@@ -8,6 +8,7 @@ import Models from './views/Models'
 import System from './views/System'
 import DataExplorer from './views/DataExplorer'
 import Analysis from './views/Analysis'
+import Login from './views/Login'
 
 const REFRESH_INTERVAL_MS = 30_000
 
@@ -31,10 +32,11 @@ export const RefreshContext = createContext<{
 })
 export const useRefreshContext = () => useContext(RefreshContext)
 
-function Topbar({ onRefresh, lastRefreshed, isLoading }: {
+function Topbar({ onRefresh, lastRefreshed, isLoading, onLogout }: {
   onRefresh: () => void
   lastRefreshed: Date | null
   isLoading: boolean
+  onLogout: () => void
 }) {
   const location = useLocation()
   const title = VIEW_TITLES[location.pathname] ?? ''
@@ -48,6 +50,7 @@ function Topbar({ onRefresh, lastRefreshed, isLoading }: {
         <button onClick={onRefresh} disabled={isLoading}>
           {isLoading ? '...' : '↺ Refresh'}
         </button>
+        <button onClick={onLogout} style={{ opacity: 0.6 }}>Sign out</button>
       </div>
     </div>
   )
@@ -92,10 +95,25 @@ export default function App() {
   const [refreshFn, setRefreshFn] = useState<() => void>(() => () => {})
   const [isLoading, setIsLoading] = useState(false)
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null)
+  const [authState, setAuthState] = useState<'loading' | 'authed' | 'unauthed'>('loading')
 
   useEffect(() => {
-    fetchSlot().then(r => setSlot(r.slot)).catch(() => {})
+    fetch('/api/auth/me')
+      .then(r => setAuthState(r.ok ? 'authed' : 'unauthed'))
+      .catch(() => setAuthState('unauthed'))
   }, [])
+
+  useEffect(() => {
+    if (authState === 'authed') fetchSlot().then(r => setSlot(r.slot)).catch(() => {})
+  }, [authState])
+
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' })
+    setAuthState('unauthed')
+  }
+
+  if (authState === 'loading') return null
+  if (authState === 'unauthed') return <Login />
 
   return (
     <BrowserRouter>
@@ -111,6 +129,7 @@ export default function App() {
               onRefresh={refreshFn}
               lastRefreshed={lastRefreshed}
               isLoading={isLoading}
+              onLogout={handleLogout}
             />
             <div className={styles.content}>
               <Routes>

@@ -1,10 +1,26 @@
 # api/main.py
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from urllib.parse import urlencode
 from typing import Callable
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Cookie, BackgroundTasks
+from fastapi.responses import RedirectResponse, JSONResponse
 from sqlalchemy.orm import Session
+from jose import jwt, JWTError
+import httpx
 from shared.orm import Market, Prediction, RawFeature
+
+_GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+_GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+_AUTH_SECRET_KEY = os.environ.get("AUTH_SECRET_KEY", "")
+_ALLOWED_EMAIL = "m7.ga.77@gmail.com"
+_REDIRECT_URI = "https://da.ai-al.site/api/auth/callback"
+_SESSION_COOKIE = "session"
+
+
+def _do_sweep(run_id: int) -> None:
+    from analysis.main import execute_run
+    execute_run(run_id)
 
 
 def create_app(session_factory_fn: Callable = None) -> FastAPI:
@@ -31,6 +47,61 @@ def create_app(session_factory_fn: Callable = None) -> FastAPI:
         # Test mode: caller manages session lifecycle
         def _get_db():
             yield session_factory_fn()
+
+    @app.get("/auth/login")
+    def auth_login():
+        params = {
+            "client_id": _GOOGLE_CLIENT_ID,
+            "redirect_uri": _REDIRECT_URI,
+            "response_type": "code",
+            "scope": "openid email",
+            "prompt": "select_account",
+        }
+        return RedirectResponse("https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(params))
+
+    @app.get("/auth/callback")
+    def auth_callback(code: str):
+        with httpx.Client() as client:
+            token_data = client.post(
+                "https://oauth2.googleapis.com/token",
+                data={
+                    "code": code,
+                    "client_id": _GOOGLE_CLIENT_ID,
+                    "client_secret": _GOOGLE_CLIENT_SECRET,
+                    "redirect_uri": _REDIRECT_URI,
+                    "grant_type": "authorization_code",
+                },
+            ).json()
+            email = client.get(
+                "https://www.googleapis.com/oauth2/v3/userinfo",
+                headers={"Authorization": f"Bearer {token_data['access_token']}"},
+            ).json().get("email", "")
+        if email != _ALLOWED_EMAIL:
+            raise HTTPException(status_code=403, detail="Not authorized")
+        token = jwt.encode(
+            {"sub": email, "exp": datetime.now(timezone.utc) + timedelta(days=30)},
+            _AUTH_SECRET_KEY,
+            algorithm="HS256",
+        )
+        resp = RedirectResponse(url="/", status_code=302)
+        resp.set_cookie(_SESSION_COOKIE, token, httponly=True, secure=True, samesite="lax", max_age=30 * 24 * 3600)
+        return resp
+
+    @app.get("/auth/me")
+    def auth_me(session: str | None = Cookie(default=None)):
+        if not session:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        try:
+            payload = jwt.decode(session, _AUTH_SECRET_KEY, algorithms=["HS256"])
+            return {"email": payload["sub"]}
+        except JWTError:
+            raise HTTPException(status_code=401, detail="Invalid session")
+
+    @app.post("/auth/logout")
+    def auth_logout():
+        resp = JSONResponse({"ok": True})
+        resp.delete_cookie(_SESSION_COOKIE, httponly=True, secure=True, samesite="lax")
+        return resp
 
     @app.get("/health")
     def health(session: Session = Depends(_get_db)):
@@ -721,16 +792,22 @@ def create_app(session_factory_fn: Callable = None) -> FastAPI:
             ]
 
     @app.post("/analysis/runs")
-    def post_analysis_runs():
-        from analysis.main import run_once
-        run = run_once(fee_bps=50)
+    def post_analysis_runs(background_tasks: BackgroundTasks):
+        from analysis.main import session_scope as _analysis_session
+        run = SweepRun(run_at=datetime.now(timezone.utc), status="running", fee_bps=50)
+        with _analysis_session() as session:
+            session.add(run)
+            session.flush()
+            run_id = run.id
+            run_at = run.run_at
+        background_tasks.add_task(_do_sweep, run_id)
         return {
-            "id": run.id,
-            "run_at": run.run_at.isoformat() if run.run_at else None,
-            "status": run.status,
-            "n_predictions": run.n_settled_predictions,
-            "elapsed_seconds": float(run.elapsed_seconds) if run.elapsed_seconds is not None else None,
-            "best_net_pnl_dollars": float(run.best_net_pnl_dollars) if run.best_net_pnl_dollars is not None else None,
+            "id": run_id,
+            "run_at": run_at.isoformat(),
+            "status": "running",
+            "n_predictions": None,
+            "elapsed_seconds": None,
+            "best_net_pnl_dollars": None,
         }
 
     return app
