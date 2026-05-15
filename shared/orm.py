@@ -1,6 +1,6 @@
 # shared/orm.py
 from sqlalchemy import (
-    BigInteger, Boolean, Column, ForeignKey, Integer, Numeric,
+    BigInteger, Boolean, Column, ForeignKey, Integer, JSON, Numeric,
     SmallInteger, Text, TIMESTAMP, UniqueConstraint,
 )
 from sqlalchemy.orm import declarative_base
@@ -80,3 +80,45 @@ class ModelRegistry(Base):
     __table_args__ = (
         UniqueConstraint("market_id", "version", name="uq_model_market_version"),
     )
+
+
+class SweepRun(Base):
+    __tablename__ = "sweep_runs"
+
+    id = Column(_BigInt, primary_key=True, autoincrement=True)
+    run_at = Column(TIMESTAMP(timezone=True), nullable=False)
+    status = Column(Text, nullable=False)  # running | complete | failed
+    n_settled_predictions = Column(Integer)
+    fee_bps = Column(Integer, nullable=False, default=50)
+    n_combinations_evaluated = Column(Integer)
+    elapsed_seconds = Column(Numeric)
+    best_net_pnl_dollars = Column(Numeric)
+    best_settings_json = Column(JSON)
+
+
+class SweepResult(Base):
+    __tablename__ = "sweep_results"
+
+    id = Column(_BigInt, primary_key=True, autoincrement=True)
+    run_id = Column(_BigInt, ForeignKey("sweep_runs.id"), nullable=False)
+    result_type = Column(Text, nullable=False)  # top_k | marginal
+    rank = Column(Integer)
+    knob_name = Column(Text)
+    knob_value = Column(Text)
+    # Knob values (NULL for marginal rows)
+    min_fee_adjusted_edge_bps = Column(Integer)
+    max_spread_bps = Column(Integer)
+    min_confidence = Column(Numeric)
+    min_contract_price_dollars = Column(Numeric)
+    crypto_live_min_market_age_seconds = Column(Integer)
+    crypto_autonomy_min_seconds_to_close = Column(Integer)
+    crypto_taker_fallback_close_seconds = Column(Integer)
+    crypto_market_price_anchor_weight = Column(Numeric)
+    crypto_late_sure_thing_min_probability = Column(Numeric)
+    crypto_late_sure_thing_min_market_probability = Column(Numeric)
+    # Metrics
+    n_trades = Column(Integer)
+    win_rate = Column(Numeric)
+    net_pnl_dollars = Column(Numeric)
+    ev_per_contract = Column(Numeric)
+    starvation_rate = Column(Numeric)
