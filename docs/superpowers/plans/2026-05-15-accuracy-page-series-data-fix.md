@@ -473,16 +473,7 @@ export const fetchSeriesHistory = (series_ticker: string, limit = 5000): Promise
   apiFetch<HistoryEntry[]>(`/history/series/${encodeURIComponent(series_ticker)}?limit=${limit}`)
 ```
 
-- [ ] **Step 3: Type-check**
-
-```bash
-cd /workspace/crypto_analysis/dashboard
-npx tsc --noEmit
-```
-
-Expected: No errors.
-
-- [ ] **Step 4: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
 cd /workspace/crypto_analysis
@@ -686,14 +677,12 @@ function buildCalibration(history: HistoryEntry[]): CalibPoint[] {
   }).filter(p => p.count > 0)
 }
 
-const SERIES_LIST = ['KXBTC15M', 'KXETH15M', 'KXSOL15M', 'KXXRP15M', 'KXDOGE15M', 'KXBNB15M', 'KXHYPE15M']
-
 export default function Accuracy({ intervalMs }: { intervalMs: number }) {
   const [summary, setSummary] = useState<StatsSummary | null>(null)
   const [avgBrier, setAvgBrier] = useState<number | null>(null)
   const [barData, setBarData] = useState<MarketBar[]>([])
   const [dirData, setDirData] = useState<DirPoint[]>([])
-  const [selectedSeries, setSelectedSeries] = useState<string>('KXBTC15M')
+  const [selectedSeries, setSelectedSeries] = useState<string>('')
   const [seriesHistory, setSeriesHistory] = useState<HistoryEntry[]>([])
   const [rollingWindow, setRollingWindow] = useState<'24h' | '7d' | '30d'>('7d')
   const [rollingData, setRollingData] = useState<RollingPoint[]>([])
@@ -705,6 +694,8 @@ export default function Accuracy({ intervalMs }: { intervalMs: number }) {
     try {
       const sum = await fetchSummary()
       setSummary(sum)
+      // Auto-select first series on initial load (selectedSeries starts as '')
+      setSelectedSeries(prev => prev || (sum.markets[0]?.ticker ?? ''))
       setBarData(sum.markets.map(m => ({
         ticker: m.ticker.replace('KX', '').replace('15M', ''),
         winRate: Math.round(m.accuracy * 100),
@@ -727,11 +718,15 @@ export default function Accuracy({ intervalMs }: { intervalMs: number }) {
     }
   }, [])
 
-  // Re-fetch series history whenever the selected series changes
+  // Re-fetch series history when the selected series changes.
+  // Cleanup cancels stale responses if the series changes before the fetch resolves.
   useEffect(() => {
+    if (!selectedSeries) return
+    let cancelled = false
     fetchSeriesHistory(selectedSeries)
-      .then(setSeriesHistory)
+      .then(h => { if (!cancelled) setSeriesHistory(h) })
       .catch(() => {})
+    return () => { cancelled = true }
   }, [selectedSeries])
 
   // Rebuild rolling and calibration from series history or window change
@@ -843,7 +838,7 @@ export default function Accuracy({ intervalMs }: { intervalMs: number }) {
             </div>
           </div>
 
-          {/* Series selector for rolling + calibration */}
+          {/* Series selector for rolling + calibration — populated from live summary */}
           <div className={styles.seriesSelector}>
             <span className={styles.selectorLabel}>Series:</span>
             <select
@@ -851,7 +846,7 @@ export default function Accuracy({ intervalMs }: { intervalMs: number }) {
               value={selectedSeries}
               onChange={e => setSelectedSeries(e.target.value)}
             >
-              {SERIES_LIST.map(s => <option key={s} value={s}>{s}</option>)}
+              {summary.markets.map(m => <option key={m.ticker} value={m.ticker}>{m.ticker}</option>)}
             </select>
           </div>
 
