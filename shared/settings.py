@@ -29,7 +29,6 @@ class Settings(BaseSettings):
     risk_stale_market_seconds: int = 60
 
     # Training campaign
-    training_campaign_enabled: bool = False
     training_campaign_lookback_hours: int = 2160
     training_campaign_cooldown_seconds: int = 600
     training_campaign_max_recent_per_market: int = 5

@@ -1,5 +1,6 @@
 # tests/test_api_analysis.py
 import pytest
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock
@@ -140,15 +141,21 @@ def test_get_analysis_run_results_not_found(db_session):
 
 def test_post_analysis_runs(db_session):
     client = _make_test_app(db_session)
-    mock_run = MagicMock()
-    mock_run.id = 42
-    mock_run.status = "complete"
-    mock_run.n_settled_predictions = 100
-    mock_run.elapsed_seconds = 1.5
-    mock_run.best_net_pnl_dollars = 5.0
-    mock_run.run_at = datetime.now(timezone.utc)
-    with patch("analysis.main.run_once", return_value=mock_run):
+
+    @contextmanager
+    def _sqlite_session_scope():
+        yield db_session
+
+    # Patch analysis.main.session_scope so run creation uses SQLite (not Postgres).
+    # Patch api.main._do_sweep so the background sweep doesn't execute in tests.
+    with patch("analysis.main.session_scope", _sqlite_session_scope), \
+         patch("api.main._do_sweep"):
         resp = client.post("/analysis/runs")
+
     assert resp.status_code == 200
-    assert resp.json()["status"] == "complete"
-    assert resp.json()["id"] == 42
+    data = resp.json()
+    assert data["status"] == "running"
+    assert isinstance(data["id"], int)
+    assert data["n_predictions"] is None
+    assert data["elapsed_seconds"] is None
+    assert data["best_net_pnl_dollars"] is None

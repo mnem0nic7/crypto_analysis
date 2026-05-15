@@ -46,3 +46,10 @@ def test_settings_live_base_url(monkeypatch):
     s = Settings()
     assert "api.elections.kalshi.com" in s.kalshi_base_url
     assert s.kalshi_api_key == "live-key"
+
+
+def test_settings_has_no_training_campaign_enabled():
+    """training_campaign_enabled was removed as dead code — ensure it stays gone."""
+    assert "training_campaign_enabled" not in Settings.model_fields, (
+        "training_campaign_enabled is dead code (never read in trainer/); do not re-add it"
+    )
