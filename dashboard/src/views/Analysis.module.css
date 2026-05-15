@@ -1,0 +1,29 @@
+.runTable { width: 100%; border-collapse: collapse; margin-bottom: 16px; font-size: 12px; }
+.runTable th { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); color: var(--text-label); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; }
+.runTable td { padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.runRowActive { background: rgba(124,58,237,0.15); }
+.runRowActive td { color: var(--text); }
+
+.sectionTitle { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-label); margin-bottom: 12px; margin-top: 20px; }
+
+.chartCard { background: var(--bg-card); border-radius: 6px; padding: 16px; margin-bottom: 16px; }
+
+.knobDetailHeader { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+.closeBtn { background: none; border: 1px solid var(--border); color: var(--text-muted); padding: 2px 8px; border-radius: 3px; cursor: pointer; font-size: 11px; font-family: inherit; }
+
+.resultsTable { width: 100%; border-collapse: collapse; font-size: 11px; }
+.resultsTable th { text-align: right; padding: 4px 6px; border-bottom: 1px solid var(--border); color: var(--text-label); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; white-space: nowrap; }
+.resultsTable th:first-child { text-align: left; }
+.resultsTable td { padding: 4px 6px; border-bottom: 1px solid var(--border); text-align: right; }
+.resultsTable td:first-child { text-align: left; }
+.resultsRowActive { background: rgba(124,58,237,0.15); }
+.resultsRowActive td { color: var(--text); }
+
+.settingsCard { background: var(--bg-card); border-radius: 6px; padding: 16px; margin-top: 12px; }
+.settingsTitle { font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-label); margin-bottom: 8px; }
+.settingsPre { font-family: monospace; font-size: 11px; color: var(--text); white-space: pre-wrap; line-height: 1.6; }
+
+.runBtn { background: var(--accent); border: none; color: #fff; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size: 12px; font-family: inherit; }
+.runBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.runHeader { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
