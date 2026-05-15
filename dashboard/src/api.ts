@@ -209,3 +209,51 @@ export const fetchDataCorrelations = (filter: DataFilter): Promise<CorrelationEn
 
 export const fetchFeatureImportance = (series_ticker: string): Promise<ImportanceEntry[]> =>
   apiFetch<ImportanceEntry[]>(`/data/feature-importance?series_ticker=${encodeURIComponent(series_ticker)}`)
+
+// ── Sweep Analysis ────────────────────────────────────────────────────────────
+
+export interface SweepRun {
+  id: number
+  run_at: string
+  status: string
+  n_predictions: number | null
+  elapsed_seconds: number | null
+  best_net_pnl_dollars: number | null
+}
+
+export interface SweepResultRow {
+  result_type: 'top_k' | 'marginal'
+  rank: number | null
+  knob_name: string | null
+  knob_value: string | null
+  min_fee_adjusted_edge_bps: number | null
+  max_spread_bps: number | null
+  min_confidence: number | null
+  min_contract_price_dollars: number | null
+  crypto_live_min_market_age_seconds: number | null
+  crypto_autonomy_min_seconds_to_close: number | null
+  crypto_taker_fallback_close_seconds: number | null
+  crypto_market_price_anchor_weight: number | null
+  crypto_late_sure_thing_min_probability: number | null
+  crypto_late_sure_thing_min_market_probability: number | null
+  n_trades: number | null
+  win_rate: number | null
+  net_pnl_dollars: number | null
+  ev_per_contract: number | null
+  starvation_rate: number | null
+}
+
+export const fetchSweepRuns = (): Promise<SweepRun[]> =>
+  apiFetch<SweepRun[]>('/analysis/runs')
+
+export const fetchLatestSweepRun = (): Promise<SweepRun> =>
+  apiFetch<SweepRun>('/analysis/runs/latest')
+
+export const fetchSweepResults = (runId: number, type: 'top_k' | 'marginal'): Promise<SweepResultRow[]> =>
+  apiFetch<SweepResultRow[]>(`/analysis/runs/${runId}/results?type=${type}`)
+
+export const triggerSweepRun = (): Promise<SweepRun> =>
+  fetch('/api/analysis/runs', { method: 'POST' }).then(res => {
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
+    return res.json() as Promise<SweepRun>
+  })
