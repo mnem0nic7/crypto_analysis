@@ -405,9 +405,7 @@ Open `tests/test_settings.py`. Append this test at the bottom:
 ```python
 def test_settings_has_no_training_campaign_enabled():
     """training_campaign_enabled was removed as dead code — ensure it stays gone."""
-    assert not hasattr(Settings, "model_fields") or "training_campaign_enabled" not in Settings.model_fields
-    s = Settings.__new__(Settings)
-    assert not hasattr(s, "training_campaign_enabled"), (
+    assert "training_campaign_enabled" not in Settings.model_fields, (
         "training_campaign_enabled is dead code (never read in trainer/); do not re-add it"
     )
 ```
@@ -490,9 +488,30 @@ FAILED tests/test_api_analysis.py::test_post_analysis_runs
 sqlalchemy.exc.OperationalError: could not translate host name "postgres" to address
 ```
 
-- [ ] **Step 2: Replace the failing test with the updated version**
+- [ ] **Step 2: Add `contextmanager` to the imports at the top of `tests/test_api_analysis.py`**
 
-Open `tests/test_api_analysis.py`. Find this test (near the bottom of the file):
+The file currently starts with:
+```python
+import pytest
+from datetime import datetime, timezone
+from fastapi.testclient import TestClient
+from unittest.mock import patch, MagicMock
+from shared.orm import SweepRun, SweepResult
+```
+
+Change it to:
+```python
+import pytest
+from contextlib import contextmanager
+from datetime import datetime, timezone
+from fastapi.testclient import TestClient
+from unittest.mock import patch, MagicMock
+from shared.orm import SweepRun, SweepResult
+```
+
+- [ ] **Step 3: Replace the failing test with the updated version**
+
+Find this test (near the bottom of the file):
 
 ```python
 def test_post_analysis_runs(db_session):
@@ -517,8 +536,6 @@ Replace it with:
 def test_post_analysis_runs(db_session):
     client = _make_test_app(db_session)
 
-    from contextlib import contextmanager
-
     @contextmanager
     def _sqlite_session_scope():
         yield db_session
@@ -538,7 +555,7 @@ def test_post_analysis_runs(db_session):
     assert data["best_net_pnl_dollars"] is None
 ```
 
-- [ ] **Step 3: Run the fixed test**
+- [ ] **Step 4: Run the fixed test**
 
 ```bash
 python3 -m pytest tests/test_api_analysis.py::test_post_analysis_runs -v
@@ -549,7 +566,7 @@ Expected:
 PASSED tests/test_api_analysis.py::test_post_analysis_runs
 ```
 
-- [ ] **Step 4: Run the full test suite to confirm all pass**
+- [ ] **Step 5: Run the full test suite to confirm all pass**
 
 ```bash
 python3 -m pytest --tb=short -q
@@ -557,7 +574,7 @@ python3 -m pytest --tb=short -q
 
 Expected: all tests pass, 0 failures.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add tests/test_api_analysis.py
