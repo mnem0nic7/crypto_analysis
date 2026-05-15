@@ -30,6 +30,11 @@ export interface MarketSummary {
   ticker: string
   accuracy: number
   settled_count: number
+  brier_score?: number
+  up_accuracy?: number
+  up_count?: number
+  down_accuracy?: number
+  down_count?: number
 }
 
 export interface StatsSummary {
@@ -77,6 +82,9 @@ export const fetchHistory = (market_id: string, limit = 200): Promise<HistoryEnt
 
 export const fetchSummary = (): Promise<StatsSummary> =>
   apiFetch<StatsSummary>('/stats/summary')
+
+export const fetchSeriesHistory = (series_ticker: string, limit = 5000): Promise<HistoryEntry[]> =>
+  apiFetch<HistoryEntry[]>(`/history/series/${encodeURIComponent(series_ticker)}?limit=${limit}`)
 
 export const fetchModels = (): Promise<ModelInfo[]> =>
   apiFetch<ModelInfo[]>('/stats/models')

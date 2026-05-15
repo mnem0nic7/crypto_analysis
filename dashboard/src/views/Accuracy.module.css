@@ -1,8 +1,67 @@
-.statGrid6 {
+.statGrid4 {
   display: grid;
-  grid-template-columns: repeat(6, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 12px;
+  margin-bottom: 16px;
+}
+
+.seriesGrid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 10px;
   margin-bottom: 24px;
+}
+
+.seriesCard {
+  background: var(--bg-card);
+  border-radius: 6px;
+  padding: 12px;
+  text-align: center;
+}
+
+.seriesTicker {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.seriesRate {
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.seriesMeta {
+  font-size: 10px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.seriesSelector {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+  margin-bottom: 12px;
+}
+
+.selectorLabel {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.seriesSelect {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
 }
 
 .charts {
@@ -10,6 +69,7 @@
   grid-template-columns: 1fr 1fr;
   gap: 16px;
   margin-top: 8px;
+  margin-bottom: 16px;
 }
 
 .chartCard {

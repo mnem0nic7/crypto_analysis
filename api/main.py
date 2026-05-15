@@ -130,6 +130,7 @@ def create_app(session_factory_fn: Callable = None) -> FastAPI:
     @app.get("/stats/summary")
     def get_stats_summary(session: Session = Depends(_get_db)):
         from sqlalchemy import func, case as sa_case
+        from shared.orm import ModelRegistry
 
         correct_expr = sa_case(
             (
@@ -143,16 +144,16 @@ def create_app(session_factory_fn: Callable = None) -> FastAPI:
             else_=0,
         )
 
+        # Query 1: per-series totals (group by ticker only, not market_id)
         rows = (
             session.query(
                 Market.ticker,
-                Prediction.market_id,
                 func.count(Prediction.id).label("settled_count"),
                 func.avg(correct_expr).label("accuracy"),
             )
             .join(Market, Market.market_id == Prediction.market_id)
             .filter(Prediction.actual_outcome != None)  # noqa: E711
-            .group_by(Market.ticker, Prediction.market_id)
+            .group_by(Market.ticker)
             .all()
         )
 
@@ -202,6 +203,36 @@ def create_app(session_factory_fn: Callable = None) -> FastAPI:
         else:
             high_conf_accuracy = 0.0
 
+        # Query 2: per-series per-direction breakdown
+        dir_rows = (
+            session.query(
+                Market.ticker,
+                Prediction.direction,
+                func.count(Prediction.id).label("count"),
+                func.avg(correct_expr).label("accuracy"),
+            )
+            .join(Market, Market.market_id == Prediction.market_id)
+            .filter(Prediction.actual_outcome != None)  # noqa: E711
+            .group_by(Market.ticker, Prediction.direction)
+            .all()
+        )
+        dir_by_ticker: dict[str, dict] = {}
+        for d in dir_rows:
+            if d.ticker not in dir_by_ticker:
+                dir_by_ticker[d.ticker] = {}
+            dir_by_ticker[d.ticker][d.direction] = {
+                "count": d.count,
+                "accuracy": round(float(d.accuracy or 0), 3),
+            }
+
+        # Query 3: active model brier scores (keyed by series ticker)
+        model_rows = (
+            session.query(ModelRegistry.market_id, ModelRegistry.brier_score)
+            .filter(ModelRegistry.is_active == True)  # noqa: E712
+            .all()
+        )
+        brier_by_ticker = {r.market_id: round(float(r.brier_score), 4) for r in model_rows}
+
         return {
             "total_settled": total_settled,
             "overall_accuracy": round(overall_accuracy, 3),
@@ -212,10 +243,46 @@ def create_app(session_factory_fn: Callable = None) -> FastAPI:
                     "ticker": r.ticker,
                     "accuracy": round(float(r.accuracy or 0), 3),
                     "settled_count": r.settled_count,
+                    "brier_score": brier_by_ticker.get(r.ticker),
+                    "up_accuracy": dir_by_ticker.get(r.ticker, {}).get("UP", {}).get("accuracy"),
+                    "up_count": dir_by_ticker.get(r.ticker, {}).get("UP", {}).get("count", 0),
+                    "down_accuracy": dir_by_ticker.get(r.ticker, {}).get("DOWN", {}).get("accuracy"),
+                    "down_count": dir_by_ticker.get(r.ticker, {}).get("DOWN", {}).get("count", 0),
                 }
                 for r in rows
             ],
         }
+
+    @app.get("/history/series/{series_ticker}")
+    def get_series_history(
+        series_ticker: str,
+        limit: int = 5000,
+        session: Session = Depends(_get_db),
+    ):
+        preds = (
+            session.query(Prediction)
+            .join(Market, Prediction.market_id == Market.market_id)
+            .filter(
+                Market.ticker == series_ticker,
+                Prediction.actual_outcome != None,  # noqa: E711
+            )
+            .order_by(Prediction.ts.desc())
+            .limit(limit)
+            .all()
+        )
+        return [
+            {
+                "ts": p.ts.isoformat(),
+                "direction": p.direction,
+                "confidence": float(p.confidence),
+                "actual_outcome": p.actual_outcome,
+                "correct": (
+                    (p.direction == "UP" and p.actual_outcome == 1)
+                    or (p.direction == "DOWN" and p.actual_outcome == 0)
+                ),
+            }
+            for p in preds
+        ]
 
     @app.get("/stats/models")
     def get_stats_models(session: Session = Depends(_get_db)):

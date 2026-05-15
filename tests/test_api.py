@@ -295,6 +295,145 @@ def test_stats_training_counts_active_models(db_session):
     assert body["last_trained_at"] is not None
 
 
+def test_stats_summary_groups_by_series_not_contract(db_session):
+    """Two contracts under the same series ticker must collapse to one markets row."""
+    now = datetime.now(timezone.utc)
+    for cid in ("KXBTCUSD-C1", "KXBTCUSD-C2"):
+        db_session.add(Market(
+            market_id=cid, ticker="KXBTCUSD", status="active",
+            close_time=now + timedelta(minutes=7),
+            discovered_at=now, updated_at=now,
+        ))
+    db_session.flush()
+    for cid, direction, actual in [
+        ("KXBTCUSD-C1", "UP", 1), ("KXBTCUSD-C1", "UP", 1),
+        ("KXBTCUSD-C2", "DOWN", 1), ("KXBTCUSD-C2", "DOWN", 1),
+    ]:
+        db_session.add(Prediction(
+            market_id=cid, ts=now, direction=direction, confidence=0.70,
+            low_confidence=False, model_version="v1",
+            settled_at=now - timedelta(minutes=1), actual_outcome=actual,
+        ))
+    db_session.flush()
+    client = _make_test_app(db_session)
+    resp = client.get("/stats/summary")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["total_settled"] == 4
+    assert len(body["markets"]) == 1, "must collapse to one row per series"
+    assert body["markets"][0]["ticker"] == "KXBTCUSD"
+    assert body["markets"][0]["settled_count"] == 4
+    assert abs(body["markets"][0]["accuracy"] - 0.5) < 0.01
+
+
+def test_stats_summary_includes_direction_breakdown(db_session):
+    now = datetime.now(timezone.utc)
+    db_session.add(Market(
+        market_id="KXBTCUSD-D1", ticker="KXBTCUSD", status="active",
+        close_time=now + timedelta(minutes=7), discovered_at=now, updated_at=now,
+    ))
+    db_session.flush()
+    for direction, actual in [
+        ("UP", 1), ("UP", 1), ("UP", 1), ("UP", 0),
+        ("DOWN", 0), ("DOWN", 0),
+    ]:
+        db_session.add(Prediction(
+            market_id="KXBTCUSD-D1", ts=now, direction=direction, confidence=0.70,
+            low_confidence=False, model_version="v1",
+            settled_at=now - timedelta(minutes=1), actual_outcome=actual,
+        ))
+    db_session.flush()
+    client = _make_test_app(db_session)
+    resp = client.get("/stats/summary")
+    assert resp.status_code == 200
+    m_row = resp.json()["markets"][0]
+    assert m_row["up_count"] == 4
+    assert abs(m_row["up_accuracy"] - 0.75) < 0.01
+    assert m_row["down_count"] == 2
+    assert abs(m_row["down_accuracy"] - 1.0) < 0.01
+
+
+def test_stats_summary_includes_brier_score(db_session):
+    from shared.orm import ModelRegistry
+    now = datetime.now(timezone.utc)
+    db_session.add(Market(
+        market_id="KXBTCUSD-B1", ticker="KXBTCUSD", status="active",
+        close_time=now + timedelta(minutes=7), discovered_at=now, updated_at=now,
+    ))
+    db_session.flush()
+    db_session.add(Prediction(
+        market_id="KXBTCUSD-B1", ts=now, direction="UP", confidence=0.70,
+        low_confidence=False, model_version="v1",
+        settled_at=now - timedelta(minutes=1), actual_outcome=1,
+    ))
+    # Sentinel market row required by ModelRegistry FK
+    db_session.add(Market(
+        market_id="KXBTCUSD", ticker="KXBTCUSD", status="series",
+        discovered_at=now, updated_at=now,
+    ))
+    db_session.flush()
+    db_session.add(ModelRegistry(
+        market_id="KXBTCUSD", version="v3",
+        trained_at=now, training_rows=500, brier_score=0.182,
+        artifact_path="/app/models/KXBTCUSD_v3.joblib", is_active=True,
+    ))
+    db_session.flush()
+    client = _make_test_app(db_session)
+    resp = client.get("/stats/summary")
+    assert resp.status_code == 200
+    m_row = resp.json()["markets"][0]
+    assert m_row["brier_score"] is not None
+    assert abs(m_row["brier_score"] - 0.182) < 0.001
+
+
+def test_series_history_returns_across_contracts(db_session):
+    now = datetime.now(timezone.utc)
+    for cid in ("KXBTCUSD-SH1", "KXBTCUSD-SH2"):
+        db_session.add(Market(
+            market_id=cid, ticker="KXBTCUSD", status="active",
+            close_time=now + timedelta(minutes=7), discovered_at=now, updated_at=now,
+        ))
+    db_session.flush()
+    for cid, direction, actual in [
+        ("KXBTCUSD-SH1", "UP", 1),
+        ("KXBTCUSD-SH1", "DOWN", 0),
+        ("KXBTCUSD-SH2", "UP", 1),
+    ]:
+        db_session.add(Prediction(
+            market_id=cid, ts=now, direction=direction, confidence=0.70,
+            low_confidence=False, model_version="v1",
+            settled_at=now - timedelta(minutes=1), actual_outcome=actual,
+        ))
+    db_session.flush()
+    client = _make_test_app(db_session)
+    resp = client.get("/history/series/KXBTCUSD")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 3
+    assert all("ts" in row and "direction" in row and "correct" in row for row in data)
+
+
+def test_series_history_respects_limit(db_session):
+    now = datetime.now(timezone.utc)
+    db_session.add(Market(
+        market_id="KXBTCUSD-LIM", ticker="KXBTCUSD", status="active",
+        close_time=now + timedelta(minutes=7), discovered_at=now, updated_at=now,
+    ))
+    db_session.flush()
+    for i in range(10):
+        db_session.add(Prediction(
+            market_id="KXBTCUSD-LIM",
+            ts=now - timedelta(minutes=i),
+            direction="UP", confidence=0.70, low_confidence=False, model_version="v1",
+            settled_at=now - timedelta(minutes=i + 1), actual_outcome=1,
+        ))
+    db_session.flush()
+    client = _make_test_app(db_session)
+    resp = client.get("/history/series/KXBTCUSD?limit=4")
+    assert resp.status_code == 200
+    assert len(resp.json()) == 4
+
+
 def test_stats_training_detects_unmodeled_markets(db_session):
     from shared.orm import ModelRegistry
     m1 = Market(
